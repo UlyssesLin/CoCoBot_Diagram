@@ -4,6 +4,14 @@ body {
     padding: 24px;
 }
 
+#diagram_inputs label {
+  padding-right: 24px;
+}
+
+#diagram_inputs input {
+  margin-right: 8px;
+}
+
 #diagram {
   margin-top: 100px;
 }
