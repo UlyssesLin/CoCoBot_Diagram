@@ -43,7 +43,7 @@ var clicked = false,
   },
   correlation = {},
   boxHeight,
-  COL_WIDTH = 200,
+  COL_WIDTH = 250,
   INIT_Y = 100,
   BOTTOM_MARGIN = 100,
   LABEL_Y = 50,
@@ -81,6 +81,7 @@ function addID(id, emotion, category) {
   }
 }
 
+// Add person's ID to the list of IDs for this emotion
 function addCategoryID(list, id) {
   if (checkID(id)) {
     var modded = parseInt(id.trim());
@@ -90,26 +91,22 @@ function addCategoryID(list, id) {
   }
 }
 
-function change(region) {
-  svg.selectAll('.' + region.target.value)
-      .transition()
-      .duration(600)
-      .attr('opacity', region.target.checked ? 1 : 0)
-}
 
 
 
-d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_data.csv').then(function(data) {
+
+d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_data_old.csv').then(function(data) {
   var topY = INIT_Y;
 
   var labels = d3.select('#diagram_inputs')
       .selectAll()
-      .data(['Individual', 'Asian/Non-Asian'])
+      .data(['Individual', 'Asian/Non-Asian', 'Count by Person'])
       .enter()
       .append('label');
 
   labels.append('input')
       .attr('type', 'checkbox')
+      .attr('class', 'checkbox')
       .property('checked', false)
       .attr('name', function(d) { return d; })
       .attr('value', function(d) { return d.toLowerCase(); })
@@ -119,6 +116,8 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
   labels.append('span')
       .text(function(d) { return d; })
 
+  // Parse the raw data
+  // Sift out Ambiguous, group items by emotion
   for (row in data) {
     var thisRow = data[row],
       thisEmotion;
@@ -140,12 +139,15 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
         // Category
         if (emotionList[thisEmotion][category]) { // category already exists in this emotion
           emotionList[thisEmotion][category].count++;
-          
+          if (thisRow.Asian_Count === 'X') {
+            emotionList[thisEmotion][category].asian_count++;
+          }
         } else { // category does not yet exist, so create
           if (thisEmotion === 'ambiguous') {
             emotionList.ambiguous[category] = {
               category: category.toLowerCase(),
               count: 1,
+              asian_count: thisRow.Asian_Count === 'X' ? 1 : 0,
               y: 0,
               id_list: []
             }
@@ -155,6 +157,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
               category: category.toLowerCase(),
               subCategories: {},
               count: 1,
+              asian_count: thisRow.Asian_Count === 'X' ? 1 : 0,
               y: 0,
               id_list: []
             };
@@ -347,7 +350,11 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     }
   }
 
-
+  // User List
+  var userListArray = [];
+  for (var [key, value] of Object.entries(correlation)) {
+    userListArray.push(key);
+  }
 
   console.log('correlation', correlation);
   console.log('emotionList', emotionList);
@@ -382,6 +389,21 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
   svg.select('#coCoBotDiagram')
     .append('g')
     .attr('id', 'positiveColSub')
+
+  d3.select('#dropdown_container')
+    .append('select')
+    .attr('name', 'userList')
+    .attr('id', 'userList')
+
+  var userList = d3.select('#userList')
+      .selectAll()
+      .data(userListArray)
+      .enter()
+      .append('option')
+      .attr('value', function(d) { return d; })
+      .text(function(d) { return d; })
+
+  d3.select('#userList').on('change', function() { console.log('changed userList item!'); })
 
   var subNegativeRectangles = svg.select('#negativeColSub')
     .selectAll('path')
@@ -445,7 +467,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     .append('text')
     .style('font-size', '16px')
     .style('text-anchor', 'middle')
-    .attr('x', 200)
+    .attr('x', 220)
     .attr('y', LABEL_Y)
     .style('font-weight', 600)
     .attr('fill', 'black')
@@ -455,7 +477,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     .append('text')
     .style('font-size', '32px')
     .style('text-anchor', 'middle')
-    .attr('x', 400)
+    .attr('x', 480)
     .attr('y', LABEL_Y)
     .style('font-weight', 600)
     .attr('fill', 'black')
@@ -465,7 +487,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     .append('text')
     .style('font-size', '32px')
     .style('text-anchor', 'middle')
-    .attr('x', 620)
+    .attr('x', 740)
     .attr('y', LABEL_Y)
     .style('font-weight', 600)
     .attr('fill', 'black')
@@ -475,7 +497,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     .append('text')
     .style('font-size', '16px')
     .style('text-anchor', 'middle')
-    .attr('x', 830)
+    .attr('x', 1000)
     .attr('y', LABEL_Y)
     .style('font-weight', 600)
     .attr('fill', 'black')
@@ -503,7 +525,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
   subNegatives
     .append('text')
     .style('font-size', '16px')
-    .attr('x', 290)
+    .attr('x', 340)
     .attr('y', function(d) {
       return d.y + 20;
     })
@@ -525,7 +547,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
   subNegatives
     .append("line")
       .attr("x1", 100)
-      .attr("x2", 300)
+      .attr("x2", 350)
       .attr("y1", function(d) { return d.y; })
       .attr("y2", function(d) { return d.y; })
       .attr("stroke", "white")
@@ -537,12 +559,9 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
   negatives
     .append('rect')
     .attr('class', function(d) { return 'mainRect negativeRect_' + d.category; })
-    .attr('x', 300)
+    .attr('x', 350)
     .attr('y', function(d) {
       return d.y;
-      // var temp = topY;
-      // topY += (d.count * boxHeight); 
-      // return temp;
     })
     .attr('width', COL_WIDTH)
     .attr('height', function(d) {
@@ -561,7 +580,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
   negatives
     .append('rect')
     .attr('class', function(d) { return 'correlatedRect negativeRect_' + d.category; })
-    .attr('x', 300 + BIG_STROKE/2)
+    .attr('x', 350 + BIG_STROKE/2)
     .attr('y', function(d) {
       return d.y;
     })
@@ -586,12 +605,9 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     })
     .attr('class', 'negativeItem colText')
     .style('font-size', '16px')
-    .attr('x', 400)
+    .attr('x', 475)
     .attr('y', function(d) {
       return d.y + 20;
-      // var temp = topY;
-      // topY += (d.count * boxHeight); 
-      // return temp;
     })
     .style('font-weight', 600)
     .attr('fill', 'white')
@@ -610,7 +626,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
   positives
     .append('rect')
     .attr('class', function(d) { return 'mainRect positiveRect_' + d.category; })
-    .attr('x', 520)
+    .attr('x', 620)
     .attr('y', function(d) {
       return d.y;
       // var temp = topY;
@@ -634,7 +650,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
   positives
     .append('rect')
     .attr('class', function(d) { return 'correlatedRect positiveRect_' + d.category; })
-    .attr('x', 520 + BIG_STROKE / 2)
+    .attr('x', 620 + BIG_STROKE / 2)
     .attr('y', function(d) {
       return d.y + BIG_STROKE / 2;
     })
@@ -661,7 +677,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     })
     .attr('class', 'positiveItem colText')
     .style('font-size', '16px')
-    .attr('x', 620)
+    .attr('x', 745)
     .attr('y', function(d) {
       return d.y + 20;
       // var temp = topY;
@@ -679,7 +695,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
   subPositiveRectangles
     .append('rect')
     .attr('class', function(d) { return 'subRect subPositiveRect_' + d.category; })
-    .attr('x', 730)
+    .attr('x', 870)
     .attr('y', function(d) {
       return d.y;
     })
@@ -697,7 +713,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
   subPositives
     .append('text')
     .style('font-size', '16px')
-    .attr('x', 740)
+    .attr('x', 880)
     .attr('y', function(d) {
       return d.y + 20;
     })
@@ -712,8 +728,8 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
   // Positive Subcategory Border Lines
   subPositives
     .append("line")
-    .attr("x1", 730)
-    .attr("x2", 930)
+    .attr("x1", 870)
+    .attr("x2", 1120)
     .attr("y1", function(d) { return d.y; })
     .attr("y2", function(d) { return d.y; })
     .attr("stroke", "white")
@@ -809,11 +825,13 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     for (var type of ['negative', 'positive']) {
       for (var i = 0; i < 5; i++) {
         sortedRects[type][i].correlatedCount = 0;
+        sortedRects[type][i].correlatedCountByPerson = 0;
       }
     }
     for (var j = 0; j < 5; j++) {
       if (sortedRects[selected_emotion][j].category === selected_category) {
         toCheck = sortedRects[selected_emotion][j]; // emotion/category block to check correlation for
+        toCheck.clickedRect = true;
         break;
       }
     }
@@ -824,6 +842,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
           for (var i = 0; i < 5; i++) {
             if (!(thisRect(toCheck.emotion, toCheck.category, type, sortedRects[type][i].category)) && sortedRects[type][i].category === category) {
               sortedRects[type][i].correlatedCount += correlation[cid][type][category];
+              sortedRects[type][i].correlatedCountByPerson++;
               break;
             }
           }
@@ -834,20 +853,34 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
 
   // CLICKING OFF THE WHEEL
 d3.select('body').on('click', function(e) {
-  triggersEvent = Array.from(e.target.classList).some(function(toCheck) {
-      return ['mainRect', 'subRect'].includes(toCheck);
-  });
-  if (!triggersEvent && rectClicked) {
+  returnToInitialVisualState(e);
+});
+
+function returnToInitialVisualState(e) {
+  if (e && e.target) {
+    triggersEvent = Array.from(e.target.classList).some(function(toCheck) {
+        return ['mainRect', 'subRect', 'checkbox'].includes(toCheck);
+    });
+  } else {
+    triggersEvent = false;
+  }
+  if (!triggersEvent) { // reset visuals (rects are at full height and opacity)
     clicked = false;
     var mainRects = d3.selectAll('.mainRect'),
     corrRects = d3.selectAll('.correlatedRect'),
     colText = d3.selectAll('.colText');
 
-    d3.select(rectClicked)
-      .attr('stroke', 'white')
-      .attr('stroke-width', BIG_STROKE)
+    if (rectClicked) {
+      d3.select(rectClicked)
+        .attr('stroke', 'white')
+        .attr('stroke-width', BIG_STROKE)
       d3.select('#' + rectClicked.__data__.emotion + '_' + rectClicked.__data__.category)
-      .attr('fill', 'white')
+        .attr('fill', 'white')
+      
+      sortedRects[rectClicked.__data__.emotion].find(function(searched) { 
+        return searched.category === rectClicked.__data__.category; 
+      }).clickedRect = false; // clicked rect in sortedRects no longer marked
+    }
     svg.select('#negativeColSub')
       .style('opacity', 1)
     svg.select('#positiveColSub')
@@ -875,7 +908,121 @@ d3.select('body').on('click', function(e) {
         return capitalize(d.category) + ' (' + d.count + ')';
       })
   }
-});
+};
+
+function change(region) {
+  if (region.target.__data__ === 'Asian/Non-Asian') {
+    if (region.target.checked) {
+      clicked = true;
+      toggleCorrelationAnimation('ethnic')
+    } else {
+      clicked = false;
+      returnToInitialVisualState();
+      // toggleCorrelationAnimation('countByInstance');
+    }
+  } else if (region.target.__data__ === 'Count by Person') {
+    if (region.target.checked) {
+      clicked = true;
+      // animateCountByPersonStatistics()
+      toggleCorrelationAnimation('countByPerson');
+    } else {
+      clicked = false;
+      // returnToInitialVisualState(e);
+      toggleCorrelationAnimation('countByInstance');
+    }
+  }
+  // svg.selectAll('.' + region.target.value)
+  //     .transition()
+  //     .duration(600)
+  //     .attr('opacity', region.target.checked ? 1 : 0)
+}
+
+  function animateEthnicStatistics() {
+    var mainRects = d3.selectAll('.mainRect'),
+      corrRects = d3.selectAll('.correlatedRect'),
+      colText = d3.selectAll('.colText');
+
+    // getEthnicRects();
+
+    mainRects.transition()
+      .duration(500)
+      .style('opacity', 0.2)
+
+    corrRects.transition()
+      .duration(1500)
+      .attr('height', function(d) {
+        // return 0;
+        return d.asian_count * boxHeight;
+      })
+
+    const myTimeout = setTimeout(function() {
+      colText
+        .text(function(d) {
+          return capitalize(d.category + '(' + d.asian_count + '/' + d.count + '): ') + Math.round(d.asian_count / d.count * 100) + '%';
+        })
+    }, 750);
+  }
+
+  // Animate correlation by person (instead of reported instance)
+  function toggleCorrelationAnimation(countMethod) {
+    var mainRects = d3.selectAll('.mainRect'),
+    
+    corrRects = d3.selectAll('.correlatedRect'),
+      colText = d3.selectAll('.colText');
+
+    mainRects.transition()
+    .duration(500)
+    .style('opacity', 0.2)
+    
+    if (countMethod === 'countByPerson') {
+      corrRects.transition()
+        .duration(1500)
+        .attr('height', function(d) {
+          return (d.correlatedCountByPerson / d.id_list.length) * d.count * boxHeight;
+        })
+      const myTimeout = setTimeout(function() {
+        colText
+          .text(function(d) {
+            var numerator = d.correlatedCountByPerson,
+              denominator = d.id_list.length;
+            return d.clickedRect ? 
+              capitalize(d.category + '(' + denominator + ')') :
+              capitalize(d.category + '(' + numerator + '/' + denominator + '): ') + Math.round(numerator / denominator * 100) + '%';
+          })
+      }, 750);
+    } else if (countMethod === 'countByInstance') {
+      corrRects.transition()
+        .duration(1500)
+        .attr('height', function(d) {
+          return d.correlatedCount * boxHeight;
+        })
+      const myTimeout = setTimeout(function() {
+        colText
+          .text(function(d) {
+            var numerator = d.correlatedCount,
+              denominator = d.count;
+              return d.clickedRect ? 
+                capitalize(d.category + '(' + denominator + ')') : 
+                capitalize(d.category + '(' + numerator + '/' + denominator + '): ') + Math.round(numerator / denominator * 100) + '%';
+          })
+      }, 750);
+    } else if (countMethod === 'ethnic') {
+      corrRects.transition()
+        .duration(1500)
+        .attr('height', function(d) {
+          return d.asian_count * boxHeight;
+        })
+      const myTimeout = setTimeout(function() {
+        colText
+          .text(function(d) {
+            var numerator = d.asian_count,
+              denominator = d.count;
+              return capitalize(d.category + '(' + numerator + '/' + denominator + '): ') + Math.round(numerator / denominator * 100) + '%';
+          })
+      }, 750);
+    }
+  }
+
     // ---------------------------------------------------------------------------END COCOBOT
       
 }) // END of d3.csv.then()
