@@ -9,7 +9,13 @@ body {
 }
 
 #diagram_inputs input {
+  transform: scale(2);
   margin-right: 8px;
+}
+
+#diagram_inputs span {
+  margin-left: 4px;
+  font-size: 16px;
 }
 
 #diagram {
