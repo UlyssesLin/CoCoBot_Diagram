@@ -10,6 +10,7 @@ var svg = d3.select("#diagram"),
 var clicked = false,
   countByPerson = true,
   rectClicked,
+  filterClicked = false,
   emotions = ['ambiguous', 'negative', 'positive'],
   subNegativeRects = [],
   subPositiveRects = [],
@@ -106,6 +107,8 @@ var clicked = false,
   },
   correlation = {},
   boxHeight,
+  boxHeightByInstance,
+  boxHeightByPerson,
   COL_WIDTH = 250,
   INIT_Y = 100,
   BOTTOM_MARGIN = 100,
@@ -116,6 +119,8 @@ var clicked = false,
   HEATMAP_BOX_HEIGHT = 100,
   HEATMAP_BOX_WIDTH = 100,
   INCOME_THRESHHOLD = 80000,
+  HEATMAP_BUCKET_1_MAX = 10,
+  HEATMAP_BUCKET_2_MAX = 20,
   TOP_COUNT = 5; // # of top categories to display
 
 function capitalize(word) {
@@ -213,11 +218,12 @@ function wrap(text, width) {
 
 
 d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_data_old.csv').then(function(data) {
-  var topY = INIT_Y;
+  var topY = INIT_Y,
+    topYByPerson = INIT_Y;
 
   var labels = d3.select('#diagram_inputs')
       .selectAll()
-      .data(['Individual', 'Asian/Non-Asian', 'Count by Person', 'Income', 'Care Receiver Age'])
+      .data(['Asian', 'Count by Person', 'Income Under $80K', 'Care Receiver Under 30'])
       .enter()
       .append('label');
 
@@ -279,6 +285,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
               category: category,
               count: 1,
               y: 0,
+              yByPerson: 0,
               id_list: []
             }
           } else {
@@ -288,6 +295,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
               subCategories: {},
               count: 1,
               y: 0,
+              yByPerson: 0,
               id_list: []
             };
           }
@@ -309,7 +317,8 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
               subCategory: subCategory.toLowerCase(),
               count: 1,
               id_list: [],
-              y: 0
+              y: 0,
+              yByPerson: 0
             };
           }
           addCategoryID(subList[subCategory].id_list, thisRow.ID_NO);
@@ -320,8 +329,6 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     }
   }
   
-  // boxHeight = SVG_HEIGHT / (emotionListCounts.negative > emotionListCounts.positive ? emotionListCounts.negative : emotionListCounts.positive);
-
   for (var type of ['negative', 'positive']) {
     for (category in emotionList[type]) {
       cols[type].push(emotionList[type][category]);
@@ -331,34 +338,6 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     }).reverse();
     cols[type].splice(5, cols[type].length - 5);
   }
-
-  // for (var type of ['negative', 'positive']) {
-  //   for (var category in cols[type]) {
-  //     var subs = cols[type][category].subCategories;
-
-  //     if (!!Object.keys(subs).length) {
-  //       var count = 0,
-  //         tempSorter = [];
-  //       for (var subcat in subs) {
-  //         tempSorter.push(subs[subcat]);
-  //       }
-  //       tempSorter.sort(function(a, b) {
-  //         return a.count - b.count;
-  //       }).reverse();
-  //       for (var i in tempSorter) {
-  //         count += tempSorter[i].count;
-  //       }
-  //       cols['sub' + capitalize(type)] = cols['sub' + capitalize(type)].concat(tempSorter);
-  //       if (rects[type].length < TOP_COUNT) {
-  //         rects[type].push({
-  //           category: cols[type][category].category,
-  //           count: count,
-  //           y: 0
-  //         });
-  //       }
-  //     }
-  //   }
-  // }
 
   // Find Neg/Pos matches, using Negative as the base
   // Once a match is found, put in sortedRects
@@ -387,41 +366,59 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
   // Get max counts
   // (find max count amount paired categories, then the longest collective remainder by emotion)
   var maxCount = 0,
+    maxCountByPerson = 0,
     mismatchedNegCount = 0,
-    mismatchedPosCount = 0;
+    mismatchedPosCount = 0,
+    mismatchedNegCountByPerson = 0,
+    mismatchedPosCountByPerson = 0;
   for (var n = 0; n < TOP_COUNT; n++) {
     var currNeg = sortedRects['negative'][n],
       currPos = sortedRects['positive'][n];
 
     if (currNeg.category === currPos.category) {
       maxCount += currNeg.count >= currPos.count ? currNeg.count : currPos.count;
+      maxCountByPerson += currNeg.id_list.length >= currPos.id_list.length ? currNeg.id_list.length : currPos.id_list.length;
     } else {
       mismatchedNegCount += currNeg.count;
       mismatchedPosCount += currPos.count;
+      mismatchedNegCountByPerson += currNeg.id_list.length;
+      mismatchedPosCountByPerson += currPos.id_list.length;
     }
   }
   
   maxCount += mismatchedNegCount >= mismatchedPosCount ? mismatchedNegCount : mismatchedPosCount;
-  boxHeight = (SVG_HEIGHT - INIT_Y - BOTTOM_MARGIN) / maxCount;
+  maxCountByPerson += mismatchedNegCountByPerson >= mismatchedPosCountByPerson ? mismatchedNegCountByPerson : mismatchedPosCountByPerson;
+  boxHeightByInstance = (SVG_HEIGHT - INIT_Y - BOTTOM_MARGIN) / maxCount;
+  boxHeightByPerson = (SVG_HEIGHT - INIT_Y - BOTTOM_MARGIN) / maxCountByPerson;
+  boxHeight = boxHeightByPerson; // initialize to count by person boxHeight
 
   var lastMatched = -1,
-    lastMatchedBottomY;
+    lastMatchedBottomY,
+    lastMatchedBottomYByPerson;
   // Update y values of sortedRects, allow for vertical spacing
   for (var n = 0; n < TOP_COUNT; n++) {
     var currNeg = sortedRects['negative'][n],
       currPos = sortedRects['positive'][n],
-      temp;
+      instanceTemp,
+      personTemp,
+      cN = currNeg.id_list.length,
+      cP = currPos.id_list.length;
 
-    temp = topY;
+    instanceTemp = topY;
+    personTemp = topYByPerson;
     // Matching categories need to "level out"
     // (i.e., if one rect is shorter, then give additional white space below
     // until bottom of other rect)
     if (currNeg.category === currPos.category) {
-      topY += ((currNeg.count >= currPos.count ? currNeg : currPos).count * boxHeight);
-      currNeg.y = temp;
-      currPos.y = temp;
+      topY += ((currNeg.count >= currPos.count ? currNeg : currPos).count * boxHeightByInstance);
+      topYByPerson += ((cN >= cP ? cN : cP) * boxHeightByPerson);
+      currNeg.y = instanceTemp;
+      currPos.y = instanceTemp;
+      currNeg.yByPerson = personTemp;
+      currPos.yByPerson = personTemp;
       lastMatched = n;
       lastMatchedBottomY = topY;
+      lastMatchedBottomYByPerson = topYByPerson;
     } else {
       break;
     }
@@ -429,11 +426,16 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
   // Non-matching categories have y just below previous rect y
   for (var type of ['negative', 'positive']) {
     for (var n = lastMatched + 1; n < TOP_COUNT; n++) {
-      temp = topY;
-      topY += (sortedRects[type][n].count * boxHeight);
-      sortedRects[type][n].y = temp;
+      // temp = topY;
+      instanceTemp = topY;
+      personTemp = topYByPerson;
+      topY += (sortedRects[type][n].count * boxHeightByInstance);
+      topYByPerson += sortedRects[type][n].id_list.length * boxHeightByPerson;
+      sortedRects[type][n].y = instanceTemp;
+      sortedRects[type][n].yByPerson = personTemp;
     }
     topY = lastMatchedBottomY;
+    topYByPerson = lastMatchedBottomYByPerson;
   }
 
   // Subcategories: TODO: logic for cutting off for Other is very poor
@@ -455,7 +457,12 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
         var otherN = -1;
         for (var n = 0; n < tempSorter.length; n++) {
           // the cutoff should be a little over the px height of text OR cutoff if long text
-          if (tempSorter[n].count * boxHeight < 20 || (tempSorter[n].subCategory.length + tempSorter[n].count.toString().length > 27 && tempSorter[n].count * boxHeight < 40)) {
+          // if (tempSorter[n].count * boxHeight < 20 || (tempSorter[n].subCategory.length + tempSorter[n].count.toString().length > 27 && tempSorter[n].count * boxHeight < 40)) {
+          //   tempSorter[n - 1].subCategory = 'Other';
+          //   otherN = n - 1;
+          //   break;
+          // }
+          if (tempSorter[n].count * boxHeightByInstance < 20 || (tempSorter[n].subCategory.length + tempSorter[n].count.toString().length > 27 && tempSorter[n].count * boxHeightByInstance < 40)) {
             tempSorter[n - 1].subCategory = 'Other';
             otherN = n - 1;
             break;
@@ -469,14 +476,22 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
           tempSorter.length = otherN + 1;
         }
         topY = sortedRects[type][category].y;
+        topYByPerson = sortedRects[type][category].yByPerson;
+        var totalInstanceCounts = 0,
+          totalPersonCounts = 0;
+        for (var subcat of tempSorter) {
+          totalPersonCounts += subcat.id_list.length;
+          totalInstanceCounts += subcat.count;
+        }
+
         for (var n = 0; n < tempSorter.length; n++) {
           temp = topY;
-          topY += (tempSorter[n].count * boxHeight);
+          tempByPerson = topYByPerson;
+          topY += (tempSorter[n].count * boxHeightByInstance);
+          topYByPerson += (tempSorter[n].id_list.length / totalPersonCounts) * sortedRects[type][category].id_list.length * boxHeight;
+          // topYByPerson += tempSorter[n].id_list.length * boxHeightByPerson;
           tempSorter[n].y = temp;
-          
-          // if (tempSorter[n].y + 40 > sortedRects[type][category].y + boxHeight * sortedRects[type][category].count) {
-          //   tempSorter[n].subCategory = 'Other'
-          // }
+          tempSorter[n].yByPerson = tempByPerson;
         }
         sortedRects['sub' + capitalize(type)] = sortedRects['sub' + capitalize(type)].concat(tempSorter);
       }
@@ -533,24 +548,34 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
         correlationPerson.employment = mapEmployment(csvPerson.Employment.toLowerCase().trim());
       }
     }
-    function getEmploymentCount(sortedRect) {
-      var totalCount = 0,
-        heatmapCounts = {};
-      for (var employmentType of ['full time', 'part time', 'other']) {
-        var typeCount = 0;
-        for (var id of sortedRect.id_list) {
-          var person_employment = correlation[id].employment;
-          if (person_employment === employmentType) {
-            typeCount++;
-          }
+
+    var totalHeatmapCountsByEmployment = {
+      'full time': 0,
+      'part time': 0,
+      'other': 0
+    };
+
+    function getEmotionPercents() {
+      for (var categoryRect of sortedRects.negative.concat(sortedRects.positive)) {
+        if (!categoryRect.heatmapCounts) {
+          categoryRect.heatmapCounts = {
+            'full time': 0,
+            'part time': 0,
+            'other': 0
+          };
         }
-        heatmapCounts[employmentType] = typeCount;
-        totalCount += typeCount;
+        for (var id of categoryRect.id_list) {
+          var person_employment = correlation[id].employment;
+          categoryRect.heatmapCounts[person_employment]++;
+          totalHeatmapCountsByEmployment[person_employment]++;
+        }
+  
       }
-      for (var employmentType of ['full time', 'part time', 'other']) {
-        heatmapCounts[employmentType] = Math.round(heatmapCounts[employmentType] * 100 / totalCount);
+      for (var categoryRect of sortedRects.negative.concat(sortedRects.positive)) {
+        for (var employment of ['full time', 'part time', 'other']) {
+          categoryRect.heatmapCounts[employment] = Math.round(categoryRect.heatmapCounts[employment] * 100 / totalHeatmapCountsByEmployment[employment]);
+        }
       }
-      return heatmapCounts;
     }
   
     var emotionLabelY = 100;
@@ -558,9 +583,10 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     for (var emotionLabel of sortedRects.negative.concat(sortedRects.positive)) {
       emotionLabel.emotionLabelY = emotionLabelY;
       emotionLabelY += HEATMAP_BOX_HEIGHT;
-      emotionLabel.heatmapCounts = getEmploymentCount(emotionLabel);
+      // emotionLabel.heatmapCounts = getEmploymentCount(emotionLabel);
     }
-
+    
+    getEmotionPercents();
 
 
     // Heatmap
@@ -668,7 +694,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     .attr('fill', function(d) {
       return d.emotion === 'negative' ? '#5bd1d7' : '#2ECC71';
     })
-    .text(function(d) { return capitalize(d.category); })
+    .text(function(d) { return capitalize(d.emotion) + ': ' + capitalize(d.category); })
     .style('text-anchor', 'end')
     .append('tspan')
     .text(function(d) { return showCount(d.id_list.length); })
@@ -687,9 +713,9 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     // .attr('rx', ROUNDED_EDGE)
     .style('fill', function(d) {
       var color;
-      if (d.heatmapCounts['full time'] < 33) {
+      if (d.heatmapCounts['full time'] < HEATMAP_BUCKET_1_MAX) {
         color = '#FCBF49';
-      } else if (d.heatmapCounts['full time'] < 66) {
+      } else if (d.heatmapCounts['full time'] < HEATMAP_BUCKET_2_MAX) {
         color = '#F77F00';
       } else {
         color = '#D62828';
@@ -726,9 +752,9 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     // .attr('rx', ROUNDED_EDGE)
     .style('fill', function(d) {
       var color;
-      if (d.heatmapCounts['part time'] < 33) {
+      if (d.heatmapCounts['part time'] < HEATMAP_BUCKET_1_MAX) {
         color = '#FCBF49';
-      } else if (d.heatmapCounts['part time'] < 66) {
+      } else if (d.heatmapCounts['part time'] < HEATMAP_BUCKET_2_MAX) {
         color = '#F77F00';
       } else {
         color = '#D62828';
@@ -765,9 +791,9 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     // .attr('rx', ROUNDED_EDGE)
     .style('fill', function(d) {
       var color;
-      if (d.heatmapCounts['other'] < 33) {
+      if (d.heatmapCounts['other'] < HEATMAP_BUCKET_1_MAX) {
         color = '#FCBF49';
-      } else if (d.heatmapCounts['other'] < 66) {
+      } else if (d.heatmapCounts['other'] < HEATMAP_BUCKET_2_MAX) {
         color = '#F77F00';
       } else {
         color = '#D62828';
@@ -831,22 +857,22 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     .append('g')
     .attr('id', 'positiveColSub')
 
-  d3.select('#dropdown_container')
-    .append('select')
-    .attr('name', 'userList')
-    .attr('id', 'userList')
+  // d3.select('#dropdown_container')
+  //   .append('select')
+  //   .attr('name', 'userList')
+  //   .attr('id', 'userList')
 
   
 
-  var userList = d3.select('#userList')
-      .selectAll()
-      .data(userListArray)
-      .enter()
-      .append('option')
-      .attr('value', function(d) { return d; })
-      .text(function(d) { return d; })
+  // var userList = d3.select('#userList')
+  //     .selectAll()
+  //     .data(userListArray)
+  //     .enter()
+  //     .append('option')
+  //     .attr('value', function(d) { return d; })
+  //     .text(function(d) { return d; })
 
-  d3.select('#userList').on('change', function() { console.log('changed userList item!'); })
+  // d3.select('#userList').on('change', function() { console.log('changed userList item!'); })
 
   var subNegativeRectangles = svg.select('#negativeColSub')
     .selectAll('path')
@@ -953,11 +979,12 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     .attr('class', function(d) { return 'subRect subNegativeRect_' + d.category.replace(/\s/g, '_'); })
     .attr('x', 100)
     .attr('y', function(d) {
-      return d.y;
+      return countByPerson ? d.yByPerson : d.y;
     })
     .attr('width', COL_WIDTH)
     .attr('height', function(d) {
-      return Object.keys(d.subCategories).length == 0 ? 0 : d.count * boxHeight;
+      // return Object.keys(d.subCategories).length == 0 ? 0 : d.count * boxHeight;
+      return (countByPerson ? d.id_list.length : d.count) * boxHeight;
     })
     .attr('rx', ROUNDED_EDGE)
     .style('fill', '#5bd1d7')
@@ -972,7 +999,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     .style('font-size', '16px')
     .attr('x', 340)
     .attr('y', function(d) {
-      return d.y + 20;
+      return d.yByPerson + 20;
     })
     .style('font-weight', 600)
     .attr('fill', '#17223b')
@@ -988,14 +1015,13 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
   // Negative Subcategory Border Lines
   subNegatives
     .append("line")
+      .attr('class', 'subNegativeLine')
       .attr("x1", 100)
       .attr("x2", 350)
-      .attr("y1", function(d) { return d.y; })
-      .attr("y2", function(d) { return d.y; })
+      .attr("y1", function(d) { return d.yByPerson; })
+      .attr("y2", function(d) { return d.yByPerson; })
       .attr("stroke", "white")
       .attr("stroke-width", "2px")
-
-  // topY = INIT_Y - 20;
 
   // Negative Column Rectangles
   negatives
@@ -1003,11 +1029,11 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     .attr('class', function(d) { return 'mainRect negativeRect_' + d.category; })
     .attr('x', 350)
     .attr('y', function(d) {
-      return d.y;
+      return countByPerson ? d.yByPerson : d.y;
     })
     .attr('width', COL_WIDTH)
     .attr('height', function(d) {
-      return d.count * boxHeight;
+      return (countByPerson ? d.id_list.length : d.count) * boxHeight;
     })
     .attr('rx', ROUNDED_EDGE)
     .style('fill', '#5bd1d7')
@@ -1024,7 +1050,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     .attr('class', function(d) { return 'correlatedRect negativeRect_' + d.category; })
     .attr('x', 350 + BIG_STROKE/2)
     .attr('y', function(d) {
-      return d.y;
+      return (countByPerson ? d.yByPerson : d.y) + BIG_STROKE/2;
     })
     .attr('width', COL_WIDTH - BIG_STROKE)
     .attr('height', function(d) {
@@ -1033,7 +1059,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     })
     .attr('rx', ROUNDED_EDGE)
     .style('fill', '#5bd1d7')
-    .style('opacity', 0.8)
+    .style('opacity', 1)
     // .attr('stroke', 'white')
     // .attr('stroke-width', BIG_STROKE)
 
@@ -1049,7 +1075,8 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     .style('font-size', '16px')
     .attr('x', 475)
     .attr('y', function(d) {
-      return d.y + 20;
+      // return d.y + 20;
+      return (countByPerson ? d.yByPerson : d.y) + 20;
     })
     .style('font-weight', 600)
     .attr('fill', 'white')
@@ -1070,14 +1097,11 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     .attr('class', function(d) { return 'mainRect positiveRect_' + d.category; })
     .attr('x', 620)
     .attr('y', function(d) {
-      return d.y;
-      // var temp = topY;
-      // topY += (d.count * boxHeight); 
-      // return temp;
+      return countByPerson ? d.yByPerson : d.y;
     })
     .attr('width', COL_WIDTH)
     .attr('height', function(d) {
-      return d.count * boxHeight;
+      return (countByPerson ? d.id_list.length : d.count) * boxHeight;
     })
     .attr('rx', ROUNDED_EDGE)
     .style('fill', '#2ECC71')
@@ -1094,7 +1118,8 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     .attr('class', function(d) { return 'correlatedRect positiveRect_' + d.category; })
     .attr('x', 620 + BIG_STROKE / 2)
     .attr('y', function(d) {
-      return d.y + BIG_STROKE / 2;
+      // return d.y + BIG_STROKE / 2;
+      return (countByPerson ? d.yByPerson : d.y) + BIG_STROKE / 2;
     })
     .attr('width', COL_WIDTH - BIG_STROKE)
     .attr('height', function(d) {
@@ -1103,13 +1128,11 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     })
     .attr('rx', ROUNDED_EDGE)
     .style('fill', '#2ECC71')
-    .style('opacity', 0.8)
+    .style('opacity', 1)
   //   .transition()
   // .duration(2000)
     // .attr('stroke', 'white')
     // .attr('stroke-width', BIG_STROKE)
-
-  // topY = INIT_Y;
 
   // Positive Column Text
   positives
@@ -1121,10 +1144,8 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     .style('font-size', '16px')
     .attr('x', 745)
     .attr('y', function(d) {
-      return d.y + 20;
-      // var temp = topY;
-      // topY += (d.count * boxHeight); 
-      // return temp;
+      // return d.y + 20;
+      return (countByPerson ? d.yByPerson : d.y) + 20;
     })
     .style('font-weight', 600)
     .attr('fill', 'white')
@@ -1139,11 +1160,11 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     .attr('class', function(d) { return 'subRect subPositiveRect_' + d.category; })
     .attr('x', 870)
     .attr('y', function(d) {
-      return d.y;
+      return countByPerson ? d.yByPerson : d.y;
     })
     .attr('width', COL_WIDTH)
     .attr('height', function(d) {
-      return d.count * boxHeight;
+      return (countByPerson ? d.id_list.length : d.count) * boxHeight;
     })
     .attr('rx', ROUNDED_EDGE)
     .style('fill', '#2ECC71')
@@ -1158,7 +1179,8 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     .style('font-size', '16px')
     .attr('x', 880)
     .attr('y', function(d) {
-      return d.y + 20;
+      // return d.yByPerson + 20;
+      return (countByPerson ? d.yByPerson : d.y) + 20;
     })
     .style('font-weight', 600)
     .attr('fill', '#17223b')
@@ -1174,10 +1196,11 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
   // Positive Subcategory Border Lines
   subPositives
     .append("line")
+    .attr('class', 'subPositiveLine')
     .attr("x1", 870)
     .attr("x2", 1120)
-    .attr("y1", function(d) { return d.y; })
-    .attr("y2", function(d) { return d.y; })
+    .attr("y1", function(d) { return d.yByPerson; })
+    .attr("y2", function(d) { return d.yByPerson; })
     .attr("stroke", "white")
     .attr("stroke-width", "2px")
 
@@ -1186,7 +1209,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
 
   // ANIMATION
   function rectHover(a, b) {
-    if (!clicked) { // only animate hover if no correlation requested
+    if (!clicked && !filterClicked) { // only animate hover if no correlation requested
       d3.select(this)
         .transition()
         .duration(100)
@@ -1197,7 +1220,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
   }
 
   function rectLeave(a, b) {
-    if (!clicked) { // only animate hover if no correlation requested
+    if (!clicked && !filterClicked) { // only animate hover if no correlation requested
       d3.select(this)
         .transition()
         .duration(100)
@@ -1208,48 +1231,32 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
   }
 
   function rectClick(a, b) {
-    clicked = true;
-    rectClicked = this;
-    d3.select(this)
-      .attr('stroke', 'black')
-      .attr('stroke-width', BIG_STROKE)
-      // .style('opacity', 1)
-      // .style('fill', '#F535AA')
-    svg.select('#negativeColSub').transition()
-      .duration(500)
-      .style('opacity', 0)
-    svg.select('#positiveColSub').transition()
-      .duration(500)
-      .style('opacity', 0)
-    subNegatives.transition()
-      .duration(500)
-      .style('opacity', 0)
-    subNegativeRectangles.transition()
-      .duration(500)
-      .style('opacity', 0)
-    subPositives.transition()
-      .duration(500)
-      .style('opacity', 0)
-    subPositiveRectangles.transition()
-      .duration(500)
-      .style('opacity', 0)
-  }
-
-  // Set d display type (by instance or person)
-  function toggleCountTypeInSortedRects() {
-    for (var type of ['negative', 'positive', 'subNegative', 'subPositive']) {
-      for (var i = 0; i < sortedRects[type].length; i++) {
-        sortedRects[type][i].displayCountByPerson = countByPerson;
-      }
-    }
-  }
-
-  // Set d correlation on/off
-  function toggleCorrelationMode() {
-    for (var type of ['negative', 'positive', 'subNegative', 'subPositive']) {
-      for (var i = 0; i < 5; i++) {
-        sortedRects[type][i].displayCorrelationMode = !!rectClicked;
-      }
+    if (!filterClicked) {
+      clicked = true;
+      rectClicked = this;
+      d3.select(this)
+        .attr('stroke', 'black')
+        .attr('stroke-width', BIG_STROKE)
+        // .style('opacity', 1)
+        // .style('fill', '#F535AA')
+      svg.select('#negativeColSub').transition()
+        .duration(500)
+        .style('opacity', 0)
+      svg.select('#positiveColSub').transition()
+        .duration(500)
+        .style('opacity', 0)
+      subNegatives.transition()
+        .duration(500)
+        .style('opacity', 0)
+      subNegativeRectangles.transition()
+        .duration(500)
+        .style('opacity', 0)
+      subPositives.transition()
+        .duration(500)
+        .style('opacity', 0)
+      subPositiveRectangles.transition()
+        .duration(500)
+        .style('opacity', 0)
     }
   }
   
@@ -1257,28 +1264,33 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
 
   // SHOW CORRELATION ANIMATION
   function animateCorrelation(a, b) {
-    var mainRects = d3.selectAll('.mainRect:not(.' + b.emotion + 'Rect_' + b.category + ')'),
-      corrRects = d3.selectAll('.correlatedRect'),
-      colText = d3.selectAll('.colText:not(#' + b.emotion + '_' + b.category + ')');
+    if (!filterClicked) {
+      var mainRects = d3.selectAll('.mainRect:not(.' + b.emotion + 'Rect_' + b.category + ')'),
+        corrRects = d3.selectAll('.correlatedRect'),
+        colText = d3.selectAll('.colText:not(#' + b.emotion + '_' + b.category + ')');
 
-    toggleCorrelationMode();
-    toggleCountTypeInSortedRects();
-    getGroupCorrelated(b.emotion, b.category);
+      // toggleCorrelationMode();
+      // toggleCountTypeInSortedRects();
+      getGroupCorrelated(b.emotion, b.category);
 
-    mainRects.transition()
-      .duration(500)
-      .style('opacity', 0.2)
+      mainRects.transition()
+        .duration(500)
+        .style('opacity', 0.2)
 
-    corrRects.transition()
-      .duration(1500)
-      .attr('height', function(d) {
-        var toMultiply = d.displayCountByPerson ? 
-          (d.correlatedCountByPerson / d.id_list.length) * d.count : 
-          d.correlatedCount;
-        return toMultiply * boxHeight;
-      })
+      corrRects.transition()
+        .duration(1500)
+        .attr('height', function(d) {
+          // var toMultiply = countByPerson ? 
+          //   (d.correlatedCountByPerson / d.id_list.length) * d.count : 
+          //   d.correlatedCount;
+          // return toMultiply * boxHeight;
+          return countByPerson ? 
+            d.correlatedCountByPerson * boxHeightByPerson : 
+            d.correlatedCount * boxHeightByInstance;
+        })
 
-    toggleCountDisplay();
+      toggleCountDisplay();
+    }
   }
 
   function thisRect(type, i, ctype, ci) {
@@ -1294,8 +1306,8 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
         if (sortedRects[type][i].tempPersonList === undefined) {
           sortedRects[type][i].tempPersonList = sortedRects[type][i].id_list;
         }
-        // sortedRects[type][i].correlatedCount = 0;
-        // sortedRects[type][i].correlatedCountByPerson = 0;
+        sortedRects[type][i].correlatedCount = 0;
+        sortedRects[type][i].correlatedCountByPerson = 0;
       }
     }
     for (var j = 0; j < 5; j++) {
@@ -1329,7 +1341,7 @@ d3.select('body').on('click', function(e) {
 function returnToInitialVisualState(e) {
   if (e && e.target) {
     triggersEvent = Array.from(e.target.classList).some(function(toCheck) {
-        return ['mainRect', 'subRect', 'checkbox'].includes(toCheck);
+        return ['mainRect', 'subRect', 'checkbox', 'correlatedRect'].includes(toCheck);
     });
   } else {
     triggersEvent = false;
@@ -1381,34 +1393,39 @@ function returnToInitialVisualState(e) {
 function change(region) {
   var selectedCheckbox = region.target.__data__,
     toSwitch = [],
-    categoryToSwitch;
+    categoryToSwitch,
+    countByToggled = false;
 
   switch(selectedCheckbox) {
-    case 'Asian/Non-Asian':
+    case 'Asian':
       categoryToSwitch = 'byEthnicity';
       break;
     case 'Count by Person':
+      countByToggled = true;
       countByPerson = !countByPerson;
-      toggleCountTypeInSortedRects();
+      // toggleCountTypeInSortedRects();
+      toggleSubCategoryAnimation();
       break;
-    case 'Income':
+    case 'Income Under $80K':
       categoryToSwitch = 'byIncome';
       break;
-    case 'Care Receiver Age':
+    case 'Care Receiver Under 30':
       categoryToSwitch = 'byCareReceiverAge';
       break;
   }
   toSwitch.push(categoryToSwitch);
 
-  if (selectedCheckbox != 'Count by Person') {
+  if (!countByToggled) {
     for (var i of toSwitch) {
       filters[i] = !filters[i];
     }
   }
 
   filterEachRect();
+  countByToggled && toggleCountByDisplay();
   toggleCountDisplay();
-  rectClicked && toggleCorrelationAnimation();
+  toggleSubCategoriesDisplay();
+  !countByToggled && toggleBinaryAnimation(filters[categoryToSwitch]);
 }
 
 function allFiltersTrueForPerson(person) {
@@ -1464,29 +1481,79 @@ function filterEachRect() {
 
 }
 
+// Updates the rectangle heights based on count by status
+function toggleCountByDisplay() {
+  var mainAndSubRects = d3.selectAll('.mainRect, .subRect'),
+    correlatedRects = d3.selectAll('.correlatedRect'),
+    colTexts = d3.selectAll('.colText'),
+    subRects = d3.selectAll('.subRect');
+
+  mainAndSubRects.transition()
+    .duration(500)
+    .attr('height', function(d) {
+      return countByPerson ? 
+        d.id_list.length * boxHeightByPerson : 
+        d.count * boxHeightByInstance;
+    })
+    .attr('y', function(d) {
+      return countByPerson ? d.yByPerson : d.y;
+    })
+
+  correlatedRects.transition()
+    .duration(500)
+    .attr('height', function(d) {
+      return (countByPerson ? 
+        d.id_list.length * boxHeightByPerson : 
+        d.count * boxHeightByInstance)
+        - BIG_STROKE;
+    })
+    .attr('y', function(d) {
+      return (countByPerson ? d.yByPerson : d.y) + BIG_STROKE/2;
+    })
+
+  colTexts.transition()
+    .duration(500)
+    .attr('y', function(d) {
+      return (countByPerson ? d.yByPerson : d.y) + 20;
+    })
+
+  // subRects.transition()
+  //   .duration(1000)
+
+}
+
+function anyFilterClicked() {
+  for (filterVal of Object.values(filters)) {
+    if (filterVal) {
+      filterClicked = true;
+      return true;
+    }
+  }
+  filterClicked = false;
+  return false;
+}
+
 // param true if you want to show by person
 function toggleCountDisplay() {
   var colText = d3.selectAll('.colText'),
     subText = d3.selectAll('.subNegative, .subPositive');
-  // const myTimeout = setTimeout(function() {
-  //   colText
-  //     .text(function(d) {
-  //       var numerator = changeToPerson ? d.correlatedCountByPerson : d.correlatedCount,
-  //         denominator = changeToPerson ? d.id_list.length : d.count,
-  //         displayContent = capitalize(d.category + ' (' + denominator + ')');
-  //       if (rectClicked && !d.clickedRect) {
-  //         displayContent = capitalize(d.category + ' (' + numerator + '/' + denominator + '): ') + Math.round(numerator / denominator * 100) + '%';
-  //       }
-  //       return displayContent;
-  //     })
-  // }, 150);
+
+  anyFilterClicked();
+
   const myTimeout = setTimeout(function() {
     colText
       .text(function(d) {
         var numerator = d.tempCount === undefined ? d.id_list.length : d.tempCount // tempCount = undefined at start, so set to person count for initial click-off
-          denominator = d.displayCountByPerson ? d.id_list.length : d.count,
+          denominator = countByPerson ? d.id_list.length : d.count,
           displayContent = capitalize(d.category + ' (' + numerator + ')');
-        if (d.displayCorrelationMode) {
+        // if (d.displayFractionMode) {
+        if (rectClicked) {
+          if (rectClicked.__data__ == d) {
+            displayContent = capitalize(d.category);
+          } else {
+            displayContent = capitalize(d.category + ' (' + (countByPerson ? correlatedCountByPerson : correlatedCount) + ')');
+          }
+        } else if (filterClicked) {
           displayContent = capitalize(d.category + ' (' + numerator + '/' + denominator + '): ') + Math.round(numerator / denominator * 100) + '%';
         }
         return displayContent;
@@ -1496,7 +1563,7 @@ function toggleCountDisplay() {
   const myTimeout2 = setTimeout(function() {
     subText
       .text(function(d) {
-          var toDisplay = d.displayCountByPerson ? d.id_list.length : d.count,  // TODO: change to tempCount!
+          var toDisplay = countByPerson ? d.id_list.length : d.count,  // TODO: change to tempCount!
           displayContent = capitalize(d.subCategory + ' (' + toDisplay + ')');
         return displayContent;
       })
@@ -1504,40 +1571,67 @@ function toggleCountDisplay() {
   }, 150);
 }
 
-  // Animate correlation by person (instead of reported instance)
-  function toggleCorrelationAnimation(countMethod) {
+  // Show animation for simple binary
+  function toggleBinaryAnimation(turnOn) {
     var mainRects = d3.selectAll('.mainRect'),
-      corrRects = d3.selectAll('.correlatedRect'),
-      colText = d3.selectAll('.colText');
+      corrRects = d3.selectAll('.correlatedRect')
 
-    if (countMethod === 'countByPerson') {
+    mainRects.transition()
+      .duration(500)
+      .style('opacity', 0.2)
+
+    // if (turnOn) {
       corrRects.transition()
-        .duration(1500)
+        .duration(1000)
         .attr('height', function(d) {
-          return (d.correlatedCountByPerson / d.id_list.length) * d.count * boxHeight;
+          // var toMultiply = countByPerson ? 
+          //   (d.tempCount / d.id_list.length) * d.count : 
+          //   d.tempCount;
+          // return toMultiply * boxHeight;
+          return d.tempCount * (countByPerson ? boxHeightByPerson : boxHeightByInstance) - BIG_STROKE;
         })
-    } else if (countMethod === 'countByInstance') {
-      corrRects.transition()
-        .duration(1500)
-        .attr('height', function(d) {
-          return d.correlatedCount * boxHeight;
-        })
-    } else if (countMethod === 'ethnic') {
-      corrRects.transition()
-        .duration(1500)
-        .attr('height', function(d) {
-          return d.asian_count * boxHeight;
-        })
-      const myTimeout = setTimeout(function() {
-        colText
-          .text(function(d) {
-            var numerator = d.asian_count,
-              denominator = d.count;
-              return capitalize(d.category + '(' + numerator + '/' + denominator + '): ') + Math.round(numerator / denominator * 100) + '%';
-          })
-      }, 750);
-    }
+    // } else {
+    //   corrRects.transition()
+    //     .duration(1000)
+    //     .attr('height', 0)
+    // }
   }
+
+  // Show animation for simple binary
+  function toggleSubCategoryAnimation() {
+    var lines = d3.selectAll('.subNegativeLine, .subPositiveLine'),
+      text = d3.selectAll('.subNegative, .subPositive');
+
+    text
+      .style('opacity', 0)
+
+    lines
+      .attr('y1', function(d) {
+        return countByPerson ? d.yByPerson : d.y;
+      })
+      .attr('y2', function(d) {
+        return countByPerson ? d.yByPerson : d.y;
+      })
+
+    text
+      .attr('y', function(d) {
+        return (countByPerson ? d.yByPerson : d.y) + 20;
+      })
+
+    text.transition()
+      .delay(200)
+      .style('opacity', 1)
+    }
+
+    function toggleSubCategoriesDisplay() {
+      var subcats = d3.selectAll('#negativeColSub, #positiveColSub');
+
+      subcats.transition()
+        .duration(500)
+        .style('opacity', function(d) {
+          return filterClicked ? 0.2 : 1;
+        })
+    }
 
     // ---------------------------------------------------------------------------END COCOBOT
       
