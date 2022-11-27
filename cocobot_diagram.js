@@ -329,14 +329,20 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     }
   }
   
+  var otherItem = {};
   for (var type of ['negative', 'positive']) {
     for (category in emotionList[type]) {
-      cols[type].push(emotionList[type][category]);
+      if (category === 'other') {
+        otherItem = emotionList[type]['other'];
+      } else {
+        cols[type].push(emotionList[type][category]);
+      }
     }
     cols[type].sort(function(a, b) {
       return a.count - b.count;
     }).reverse();
-    cols[type].splice(5, cols[type].length - 5);
+    cols[type].splice(4, cols[type].length - 4);
+    !!otherItem && cols[type].push(otherItem);
   }
 
   // Find Neg/Pos matches, using Negative as the base
@@ -508,33 +514,33 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
 
   function mapEmployment(rawEmployment) {
     var mapper = {
-      'full time': 'full time',
-      'full-time': 'full time',
-      'full time employed': 'full time',
-      'full time work': 'full time',
-      'full time worker': 'full time',
-      'full-time unpaid caregive': 'full time',
-      'employed': 'full time',
-      'employed full-time': 'full time',
-      'ft': 'full time',
-      'work full time': 'full time',
-      'work fulltime': 'full time',
-      'work full-time': 'full time',
-      'working .8 fte': 'full time',
-      'working full time': 'full time',
-      'working full-time': 'full time',
-      'working full-time and caregiving': 'full time',
-      'employed part time': 'part time',
-      '2 part time jobs & homeschool': 'part time',
-      'part time': 'part time',
-      'part time employed': 'part time',
-      'part time worker': 'part time',
-      'part-time self employed, part-time employed elsewhere': 'part time',
-      'working half-time': 'part time',
-      'working part time': 'part time',
-      'working part-time': 'part time'
+      'full time': 'fullTime',
+      'full-time': 'fullTime',
+      'full time employed': 'fullTime',
+      'full time work': 'fullTime',
+      'full time worker': 'fullTime',
+      'full-time unpaid caregive': 'fullTime',
+      'employed': 'fullTime',
+      'employed full-time': 'fullTime',
+      'ft': 'fullTime',
+      'work full time': 'fullTime',
+      'work fulltime': 'fullTime',
+      'work full-time': 'fullTime',
+      'working .8 fte': 'fullTime',
+      'working full time': 'fullTime',
+      'working full-time': 'fullTime',
+      'working full-time and caregiving': 'fullTime',
+      'employed part time': 'partTime',
+      '2 part time jobs & homeschool': 'partTime',
+      'part time': 'partTime',
+      'part time employed': 'partTime',
+      'part time worker': 'partTime',
+      'part-time self employed, part-time employed elsewhere': 'partTime',
+      'working half-time': 'partTime',
+      'working part time': 'partTime',
+      'working part-time': 'partTime'
     };
-    return mapper[rawEmployment] || 'other';
+    return mapper[rawEmployment] || 'otherTime';
   }
 
   d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/coco-demographics.csv').then(function(data) {
@@ -549,41 +555,83 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
       }
     }
 
-    var totalHeatmapCountsByEmployment = {
-      'full time': 0,
-      'part time': 0,
-      'other': 0
+    var totalHeatmapCounts = {
+      negative: {
+        'fullTime': 0,
+        'partTime': 0,
+        'otherTime': 0,
+        'asian': 0,
+        'income_under_80': 0,
+        'receiver_under_30': 0,
+        'non_asian': 0,
+        'non_income_under_80': 0,
+        'non_receiver_under_30': 0
+      },
+      positive: {
+        'fullTime': 0,
+        'partTime': 0,
+        'otherTime': 0,
+        'asian': 0,
+        'income_under_80': 0,
+        'receiver_under_30': 0,
+        'non_asian': 0,
+        'non_income_under_80': 0,
+        'non_receiver_under_30': 0
+      }
     };
 
+    // by person count, not instance
     function getEmotionPercents() {
-      for (var categoryRect of sortedRects.negative.concat(sortedRects.positive)) {
-        if (!categoryRect.heatmapCounts) {
-          categoryRect.heatmapCounts = {
-            'full time': 0,
-            'part time': 0,
-            'other': 0
-          };
+      for (var emotion of ['negative', 'positive']) {
+        for (var categoryRect of sortedRects[emotion]) {
+          var tempTotal = 0;
+          if (!categoryRect.heatmapCounts) {
+            categoryRect.heatmapCounts = {
+              'fullTime': 0,
+              'partTime': 0,
+              'otherTime': 0,
+              'asian': 0,
+              'income_under_80': 0,
+              'receiver_under_30': 0,
+              'non_asian': 0,
+              'non_income_under_80': 0,
+              'non_receiver_under_30': 0
+            };
+          }
+          for (var id of categoryRect.id_list) {
+            var p = correlation[id];
+            categoryRect.heatmapCounts[p.employment]++;
+            for (var cat of ['asian', 'income_under_80', 'receiver_under_30']) {
+              if (p[cat]) {
+                categoryRect.heatmapCounts[cat]++;
+                totalHeatmapCounts[emotion][cat]++;
+              } else { // tally inverses: non_asian, non_income_under_80, non_receiver_under_30
+                categoryRect.heatmapCounts['non_' + cat]++;
+                totalHeatmapCounts[emotion]['non_' + cat]++;
+              }
+            }
+            totalHeatmapCounts[emotion][p.employment]++;
+          }
+    
         }
-        for (var id of categoryRect.id_list) {
-          var person_employment = correlation[id].employment;
-          categoryRect.heatmapCounts[person_employment]++;
-          totalHeatmapCountsByEmployment[person_employment]++;
-        }
-  
-      }
-      for (var categoryRect of sortedRects.negative.concat(sortedRects.positive)) {
-        for (var employment of ['full time', 'part time', 'other']) {
-          categoryRect.heatmapCounts[employment] = Math.round(categoryRect.heatmapCounts[employment] * 100 / totalHeatmapCountsByEmployment[employment]);
+        for (var categoryRect of sortedRects[emotion]) {
+          for (var cat of ['fullTime', 'partTime', 'otherTime', 'asian', 'income_under_80', 'receiver_under_30', 'non_asian', 'non_income_under_80', 'non_receiver_under_30']) {
+            categoryRect.heatmapCounts[cat] = Math.round(categoryRect.heatmapCounts[cat] * 100 / totalHeatmapCounts[emotion][cat]);
+          }
         }
       }
     }
   
     var emotionLabelY = 100;
   
-    for (var emotionLabel of sortedRects.negative.concat(sortedRects.positive)) {
+    for (var emotionLabel of sortedRects.negative) {
       emotionLabel.emotionLabelY = emotionLabelY;
       emotionLabelY += HEATMAP_BOX_HEIGHT;
-      // emotionLabel.heatmapCounts = getEmploymentCount(emotionLabel);
+    }
+    emotionLabelY += 50; // space between negatives and positives
+    for (var emotionLabel of sortedRects.positive) {
+      emotionLabel.emotionLabelY = emotionLabelY;
+      emotionLabelY += HEATMAP_BOX_HEIGHT;
     }
     
     getEmotionPercents();
@@ -591,32 +639,45 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
 
     // Heatmap
   heatmap.append('g')
-  .attr('id', 'heatmapDiagram')
+    .attr('id', 'heatmapDiagram')
 
+  // Create heatmap column wrappers (<g>)
   heatmap.select('#heatmapDiagram')
+    .selectAll('path')
+    .data(['emotionLabels', 'topLabels', 'fullTimeCol', 'partTimeCol', 'otherTimeCol', 'asianCol', 'non_asianCol', 'income_under_80Col', 'non_income_under_80Col', 'receiver_under_30Col', 'non_receiver_under_30Col'])
+    .enter()
     .append('g')
-    .attr('id', 'emotionLabels')
-
-  heatmap.select('#heatmapDiagram')
-    .append('g')
-    .attr('id', 'topLabels')
-    
-  heatmap.select('#heatmapDiagram')
-    .append('g')
-    .attr('id', 'fullTimeCol')
-
-  heatmap.select('#heatmapDiagram')
-    .append('g')
-    .attr('id', 'partTimeCol')
-
-  heatmap.select('#heatmapDiagram')
-    .append('g')
-    .attr('id', 'otherTimeCol')
+    .attr('id', function(d) {
+      return d;
+    })
 
 
 
     
-  // Heatmap
+  // Heatmap mapper for string<--->var conversion
+  var fullTime, partTime, otherTime, asian, non_asian, income_under_80, non_income_under_80, receiver_under_30, non_receiver_under_30,
+    heatmapColMapper = {
+      fullTime: fullTime,
+      partTime: partTime,
+      otherTime: otherTime,
+      asian: asian,
+      non_asian: non_asian,
+      income_under_80: income_under_80,
+      non_income_under_80: non_income_under_80,
+      receiver_under_30: receiver_under_30,
+      non_receiver_under_30: non_receiver_under_30
+    };
+
+  for (var key of Object.keys(heatmapColMapper)) {
+    heatmapColMapper[key] = heatmap.select('#' + key + 'Col')
+      .selectAll('path')
+      .data(sortedRects.negative.concat(sortedRects.positive))
+      .enter()
+      .append('g')
+      .attr('width', 100)
+  }
+
+
   var emotionLabels = heatmap.select('#emotionLabels')
     .selectAll('path')
     .data(sortedRects.negative.concat(sortedRects.positive))
@@ -624,57 +685,28 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     .append('g')
     .attr('width', 100)
 
-  var fullTime = heatmap.select('#fullTimeCol')
+
+
+  var heatmapLabelX = 570;
+  heatmap.select('#topLabels')
     .selectAll('path')
-    .data(sortedRects.negative.concat(sortedRects.positive))
+    .data(['Full', 'Part', 'Other', 'Asian', 'Non-Asian', '<80k', '80k+', '<30 years', '30+ years'])
     .enter()
-    .append('g')
-    .attr('width', 100)
-
-  var partTime = heatmap.select('#partTimeCol')
-    .selectAll('path')
-    .data(sortedRects.negative.concat(sortedRects.positive))
-    .enter()
-    .append('g')
-    .attr('width', 100)
-
-  var otherTime = heatmap.select('#otherTimeCol')
-    .selectAll('path')
-    .data(sortedRects.negative.concat(sortedRects.positive))
-    .enter()
-    .append('g')
-    .attr('width', 100)
-
-
-  heatmap.select("#topLabels")
     .append('text')
     .style('font-size', '16px')
     .style('text-anchor', 'middle')
-    .attr('x', 570)
+    .attr('x', function(d) {
+      var toRet = heatmapLabelX;
+      // heatmapLabelX += 100;
+      heatmapLabelX += ['Other', 'Non-Asian', '80k+'].includes(d) ? 150 : 100;
+      return toRet;
+    })
     .attr('y', 35)
     .style('font-weight', 600)
     .attr('fill', 'black')
-    .text('Full')
-
-  heatmap.select("#topLabels")
-    .append('text')
-    .style('font-size', '16px')
-    .style('text-anchor', 'middle')
-    .attr('x', 670)
-    .attr('y', 35)
-    .style('font-weight', 600)
-    .attr('fill', 'black')
-    .text('Part')
-
-  heatmap.select("#topLabels")
-    .append('text')
-    .style('font-size', '16px')
-    .style('text-anchor', 'middle')
-    .attr('x', 770)
-    .attr('y', 35)
-    .style('font-weight', 600)
-    .attr('fill', 'black')
-    .text('Other')
+    .text(function(d) {
+      return d;
+    })
 
 
 
@@ -699,124 +731,70 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     .append('tspan')
     .text(function(d) { return showCount(d.id_list.length); })
 
-  fullTime
-    .append('rect')
-    .attr('class', function(d) { return 'fullTimeBox_' + d.emotion + '_' + d.category; })
-    .attr('x', 520)
-    .attr('y', function(d) {
-      return d.emotionLabelY - 50;
-    })
-    .attr('width', HEATMAP_BOX_WIDTH)
-    .attr('height', function(d) {
-      return 100;
-    })
-    // .attr('rx', ROUNDED_EDGE)
-    .style('fill', function(d) {
-      var color;
-      if (d.heatmapCounts['full time'] < HEATMAP_BUCKET_1_MAX) {
-        color = '#FCBF49';
-      } else if (d.heatmapCounts['full time'] < HEATMAP_BUCKET_2_MAX) {
-        color = '#F77F00';
-      } else {
-        color = '#D62828';
-      }
-      return color;
-    })
-    .style('opacity', 1)
-    .attr('stroke', 'white')
-    .attr('stroke-width', BIG_STROKE)
 
-  fullTime
-    .append('text')
-    .style('font-size', '16px')
-    .attr('x', 570)
-    .attr('y', function(d) {
-      return d.emotionLabelY + 5;
-    })
-    .style('font-weight', 900)
-    .attr('fill', 'white')
-    .text(function(d) { return d.heatmapCounts['full time'] + '%'; })
-    .style('text-anchor', 'middle')
 
-  partTime
-    .append('rect')
-    .attr('class', function(d) { return 'partTimeBox_' + d.emotion + '_' + d.category; })
-    .attr('x', 620)
-    .attr('y', function(d) {
-      return d.emotionLabelY - 50;
-    })
-    .attr('width', HEATMAP_BOX_WIDTH)
-    .attr('height', function(d) {
-      return 100;
-    })
-    // .attr('rx', ROUNDED_EDGE)
-    .style('fill', function(d) {
-      var color;
-      if (d.heatmapCounts['part time'] < HEATMAP_BUCKET_1_MAX) {
-        color = '#FCBF49';
-      } else if (d.heatmapCounts['part time'] < HEATMAP_BUCKET_2_MAX) {
-        color = '#F77F00';
-      } else {
-        color = '#D62828';
-      }
-      return color;
-    })
-    .style('opacity', 1)
-    .attr('stroke', 'white')
-    .attr('stroke-width', BIG_STROKE)
+  var colorScale,
+    tempDataSet = sortedRects.negative.concat(sortedRects.positive);
 
-  partTime
-    .append('text')
-    .style('font-size', '16px')
-    .attr('x', 670)
-    .attr('y', function(d) {
-      return d.emotionLabelY + 5;
-    })
-    .style('font-weight', 900)
-    .attr('fill', 'white')
-    .text(function(d) { return d.heatmapCounts['part time'] + '%'; })
-    .style('text-anchor', 'middle')
+  // colorScale = d3.scaleLinear()
+  //   .domain(d3.extent(tempDataSet))
+  //   .range(['white','red'])
+  colorScale = d3.scaleLinear()
+    .domain([0, 30])
+    .range(['blue','brown'])
 
-  otherTime
-    .append('rect')
-    .attr('class', function(d) { return 'otherTimeBox_' + d.emotion + '_' + d.category; })
-    .attr('x', 720)
-    .attr('y', function(d) {
-      return d.emotionLabelY - 50;
-    })
-    .attr('width', HEATMAP_BOX_WIDTH)
-    .attr('height', function(d) {
-      return 100;
-    })
-    // .attr('rx', ROUNDED_EDGE)
-    .style('fill', function(d) {
-      var color;
-      if (d.heatmapCounts['other'] < HEATMAP_BUCKET_1_MAX) {
-        color = '#FCBF49';
-      } else if (d.heatmapCounts['other'] < HEATMAP_BUCKET_2_MAX) {
-        color = '#F77F00';
-      } else {
-        color = '#D62828';
-      }
-      return color;
-    })
-    .style('opacity', 1)
-    .attr('stroke', 'white')
-    .attr('stroke-width', BIG_STROKE)
+  // Display heatmap colored squared
+  var heatmapColX = 520;
+  for (var heatmapCol of Object.keys(heatmapColMapper)) {
+    // tempDataSet = heatmapColMapper[heatmapCol];
+    heatmapColMapper[heatmapCol]
+      .append('rect')
+      .attr('class', function(d) { return heatmapCol + 'Box_' + d.emotion + '_' + d.category; })
+      .attr('x', heatmapColX)
+      .attr('y', function(d) {
+        return d.emotionLabelY - 50;
+      })
+      .attr('width', HEATMAP_BOX_WIDTH)
+      .attr('height', function(d) {
+        return 100;
+      })
+      // .attr('rx', ROUNDED_EDGE)
+      // .style('fill', function(d) {
+      //   var color;
+      //   if (d.heatmapCounts[heatmapCol] < HEATMAP_BUCKET_1_MAX) {
+      //     color = '#FCBF49';
+      //   } else if (d.heatmapCounts[heatmapCol] < HEATMAP_BUCKET_2_MAX) {
+      //     color = '#F77F00';
+      //   } else {
+      //     color = '#D62828';
+      //   }
+      //   return color;
+      // })
+      .attr('fill', function(d) {
+        return colorScale(d.heatmapCounts[heatmapCol]);
+      })
+      .style('opacity', 1)
+      .attr('stroke', 'white')
+      // function(d) {
+      //   return 'white')
+      .attr('stroke-width', BIG_STROKE)
+  
+      heatmapColMapper[heatmapCol]
+      .append('text')
+      .style('font-size', '16px')
+      .attr('x', heatmapColX + 50)
+      .attr('y', function(d) {
+        return d.emotionLabelY + 5;
+      })
+      .style('font-weight', 900)
+      .attr('fill', 'white')
+      .text(function(d) { return d.heatmapCounts[heatmapCol] + '%'; })
+      .style('text-anchor', 'middle')
 
-  otherTime
-    .append('text')
-    .style('font-size', '16px')
-    .attr('x', 770)
-    .attr('y', function(d) {
-      return d.emotionLabelY + 5;
-    })
-    .style('font-weight', 900)
-    .attr('fill', 'white')
-    .text(function(d) { return d.heatmapCounts['other'] + '%'; })
-    .style('text-anchor', 'middle')
+    heatmapColX += ['otherTime', 'non_asian', 'non_income_under_80'].includes(heatmapCol) ? 150 : 100;
+  }
 
-  });
+  }); // END HEATMAP
 
 
   console.log('correlation', correlation);
