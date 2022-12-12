@@ -22,6 +22,10 @@ body {
   margin-top: 100px;
 }
 
+.hoverRectText {
+  pointer-events: none;
+}
+
 .shared-row {
     display: inline-block;
 }

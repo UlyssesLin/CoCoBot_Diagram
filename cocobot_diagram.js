@@ -121,6 +121,7 @@ var clicked = false,
   INCOME_THRESHHOLD = 80000,
   HEATMAP_BUCKET_1_MAX = 10,
   HEATMAP_BUCKET_2_MAX = 20,
+  SECOND_HEATMAP_OFFSET = 1400,
   TOP_COUNT = 5; // # of top categories to display
 
 function capitalize(word) {
@@ -543,6 +544,39 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     return mapper[rawEmployment] || 'otherTime';
   }
 
+  var totalHeatmapCounts = {
+    negative: {
+      'fullTime': 0,
+      'partTime': 0,
+      'otherTime': 0,
+      'asian': 0,
+      'income_under_80': 0,
+      'receiver_under_30': 0,
+      'non_asian': 0,
+      'non_income_under_80': 0,
+      'non_receiver_under_30': 0,
+      'asianANDincome_under_80': 0,
+      'asianANDnon_income_under_80': 0,
+      'non_asianANDincome_under_80': 0,
+      'non_asianANDnon_income_under_80': 0
+    },
+    positive: {
+      'fullTime': 0,
+      'partTime': 0,
+      'otherTime': 0,
+      'asian': 0,
+      'income_under_80': 0,
+      'receiver_under_30': 0,
+      'non_asian': 0,
+      'non_income_under_80': 0,
+      'non_receiver_under_30': 0,
+      'asianANDincome_under_80': 0,
+      'asianANDnon_income_under_80': 0,
+      'non_asianANDincome_under_80': 0,
+      'non_asianANDnon_income_under_80': 0
+    }
+  };
+
   d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/coco-demographics.csv').then(function(data) {
     for (var csvPerson of data) {
       if (correlation[csvPerson.Id]) {
@@ -554,31 +588,6 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
         correlationPerson.employment = mapEmployment(csvPerson.Employment.toLowerCase().trim());
       }
     }
-
-    var totalHeatmapCounts = {
-      negative: {
-        'fullTime': 0,
-        'partTime': 0,
-        'otherTime': 0,
-        'asian': 0,
-        'income_under_80': 0,
-        'receiver_under_30': 0,
-        'non_asian': 0,
-        'non_income_under_80': 0,
-        'non_receiver_under_30': 0
-      },
-      positive: {
-        'fullTime': 0,
-        'partTime': 0,
-        'otherTime': 0,
-        'asian': 0,
-        'income_under_80': 0,
-        'receiver_under_30': 0,
-        'non_asian': 0,
-        'non_income_under_80': 0,
-        'non_receiver_under_30': 0
-      }
-    };
 
     // by person count, not instance
     function getEmotionPercents() {
@@ -595,12 +604,17 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
               'receiver_under_30': 0,
               'non_asian': 0,
               'non_income_under_80': 0,
-              'non_receiver_under_30': 0
+              'non_receiver_under_30': 0,
+              'asianANDincome_under_80': 0,
+              'asianANDnon_income_under_80': 0,
+              'non_asianANDincome_under_80': 0,
+              'non_asianANDnon_income_under_80': 0
             };
           }
           for (var id of categoryRect.id_list) {
             var p = correlation[id];
             categoryRect.heatmapCounts[p.employment]++;
+            totalHeatmapCounts[emotion][p.employment]++;
             for (var cat of ['asian', 'income_under_80', 'receiver_under_30']) {
               if (p[cat]) {
                 categoryRect.heatmapCounts[cat]++;
@@ -610,19 +624,37 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
                 totalHeatmapCounts[emotion]['non_' + cat]++;
               }
             }
-            totalHeatmapCounts[emotion][p.employment]++;
+            // Combinations
+            if (p['asian']) {
+              if (p['income_under_80']) {
+                categoryRect.heatmapCounts['asianANDincome_under_80']++;
+                totalHeatmapCounts[emotion]['asianANDincome_under_80']++;
+              } else {
+                categoryRect.heatmapCounts['asianANDnon_income_under_80']++;
+                totalHeatmapCounts[emotion]['asianANDnon_income_under_80']++;
+              }
+            } else {
+              if (p['income_under_80']) {
+                categoryRect.heatmapCounts['non_asianANDincome_under_80']++;
+                totalHeatmapCounts[emotion]['non_asianANDincome_under_80']++;
+              } else {
+                categoryRect.heatmapCounts['non_asianANDnon_income_under_80']++;
+                totalHeatmapCounts[emotion]['non_asianANDnon_income_under_80']++;
+              }
+            }
           }
     
         }
         for (var categoryRect of sortedRects[emotion]) {
-          for (var cat of ['fullTime', 'partTime', 'otherTime', 'asian', 'income_under_80', 'receiver_under_30', 'non_asian', 'non_income_under_80', 'non_receiver_under_30']) {
+          for (var cat of ['fullTime', 'partTime', 'otherTime', 'asian', 'income_under_80', 'receiver_under_30', 'non_asian', 'non_income_under_80', 'non_receiver_under_30', 'asianANDincome_under_80', 'asianANDnon_income_under_80', 'non_asianANDincome_under_80', 'non_asianANDnon_income_under_80']) {
+            categoryRect.heatmapCounts[cat + '_tooltip'] = '(' + categoryRect.heatmapCounts[cat] + '/' + totalHeatmapCounts[emotion][cat] + ')';
             categoryRect.heatmapCounts[cat] = Math.round(categoryRect.heatmapCounts[cat] * 100 / totalHeatmapCounts[emotion][cat]);
           }
         }
       }
     }
   
-    var emotionLabelY = 100;
+    var emotionLabelY = 200;
   
     for (var emotionLabel of sortedRects.negative) {
       emotionLabel.emotionLabelY = emotionLabelY;
@@ -638,161 +670,308 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
 
 
     // Heatmap
-  heatmap.append('g')
-    .attr('id', 'heatmapDiagram')
+    heatmap.append('g')
+      .attr('id', 'heatmapDiagram')
 
-  // Create heatmap column wrappers (<g>)
-  heatmap.select('#heatmapDiagram')
-    .selectAll('path')
-    .data(['emotionLabels', 'topLabels', 'fullTimeCol', 'partTimeCol', 'otherTimeCol', 'asianCol', 'non_asianCol', 'income_under_80Col', 'non_income_under_80Col', 'receiver_under_30Col', 'non_receiver_under_30Col'])
-    .enter()
-    .append('g')
-    .attr('id', function(d) {
-      return d;
-    })
+    // Create heatmap column wrappers (<g>)
+    heatmap.select('#heatmapDiagram')
+      .selectAll('path')
+      .data(['emotionLabels', 'topLabels', 'fullTimeCol', 'partTimeCol', 'otherTimeCol', 'asianCol', 'non_asianCol', 'income_under_80Col', 'non_income_under_80Col', 'receiver_under_30Col', 'non_receiver_under_30Col', 'asianANDincome_under_80Col', 'asianANDnon_income_under_80Col', 'non_asianANDincome_under_80Col', 'non_asianANDnon_income_under_80Col'])
+      .enter()
+      .append('g')
+      .attr('id', function(d) {
+        return d;
+      })
 
 
 
     
-  // Heatmap mapper for string<--->var conversion
-  var fullTime, partTime, otherTime, asian, non_asian, income_under_80, non_income_under_80, receiver_under_30, non_receiver_under_30,
-    heatmapColMapper = {
-      fullTime: fullTime,
-      partTime: partTime,
-      otherTime: otherTime,
-      asian: asian,
-      non_asian: non_asian,
-      income_under_80: income_under_80,
-      non_income_under_80: non_income_under_80,
-      receiver_under_30: receiver_under_30,
-      non_receiver_under_30: non_receiver_under_30
-    };
+    // Heatmap mapper for string<--->var conversion
+    var fullTime, partTime, otherTime, asian, non_asian, income_under_80, non_income_under_80, receiver_under_30, non_receiver_under_30, asianANDincome_under_80, asianANDnon_income_under_80, non_asianANDincome_under_80, non_asianANDnon_income_under_80,
+      heatmapColMapper = {
+        fullTime: fullTime,
+        partTime: partTime,
+        otherTime: otherTime,
+        asian: asian,
+        non_asian: non_asian,
+        income_under_80: income_under_80,
+        non_income_under_80: non_income_under_80,
+        receiver_under_30: receiver_under_30,
+        non_receiver_under_30: non_receiver_under_30,
+        asianANDincome_under_80: asianANDincome_under_80, 
+        asianANDnon_income_under_80: asianANDnon_income_under_80, 
+        non_asianANDincome_under_80: non_asianANDincome_under_80, 
+        non_asianANDnon_income_under_80: non_asianANDnon_income_under_80
+      };
 
-  for (var key of Object.keys(heatmapColMapper)) {
-    heatmapColMapper[key] = heatmap.select('#' + key + 'Col')
+    for (var key of Object.keys(heatmapColMapper)) {
+      heatmapColMapper[key] = heatmap.select('#' + key + 'Col')
+        .selectAll('path')
+        .data(sortedRects.negative.concat(sortedRects.positive))
+        .enter()
+        .append('g')
+        .attr('width', 100)
+    }
+
+
+    var emotionLabels = heatmap.select('#emotionLabels')
       .selectAll('path')
       .data(sortedRects.negative.concat(sortedRects.positive))
       .enter()
       .append('g')
       .attr('width', 100)
-  }
+
+    var verticalLabels = heatmap.select('#topLabels')
+      .selectAll('path')
+      .data([
+        {
+          emotion: 'negative',
+          y: 500
+        },
+        {
+          emotion: 'positive',
+          y: 1000
+        }
+      ])
+      .enter()
+      .append('g')
+
+    var horizontalLabels = heatmap.select('#emotionLabels')
+      .selectAll('path')
+      .data([
+        {
+          group: 'Employment',
+          x: 670
+        },
+        {
+          group: 'Ethnicity',
+          x: 940
+        },
+        {
+          group: 'Income',
+          x: 1160
+        },
+        {
+          group: 'Caregiver\nAge',
+          x: 1380
+        }
+      ])
+      .enter()
+      .append('g')
 
 
-  var emotionLabels = heatmap.select('#emotionLabels')
-    .selectAll('path')
-    .data(sortedRects.negative.concat(sortedRects.positive))
-    .enter()
-    .append('g')
-    .attr('width', 100)
-
-
-
-  var heatmapLabelX = 570;
-  heatmap.select('#topLabels')
-    .selectAll('path')
-    .data(['Full', 'Part', 'Other', 'Asian', 'Non-Asian', '<80k', '80k+', '<30 years', '30+ years'])
-    .enter()
-    .append('text')
-    .style('font-size', '16px')
-    .style('text-anchor', 'middle')
-    .attr('x', function(d) {
-      var toRet = heatmapLabelX;
-      // heatmapLabelX += 100;
-      heatmapLabelX += ['Other', 'Non-Asian', '80k+'].includes(d) ? 150 : 100;
-      return toRet;
-    })
-    .attr('y', 35)
-    .style('font-weight', 600)
-    .attr('fill', 'black')
-    .text(function(d) {
-      return d;
-    })
-
-
-
-  // HEATMAP DISPLAY
-  emotionLabels
-    .append('text')
-    .attr('id', function(d) {
-      return d.emotion + '_' + d.category + '_heatmap';
-    })
-    .attr('class', 'heatmapLabel')
-    .style('font-size', '16px')
-    .attr('x', 475)
-    .attr('y', function(d) {
-      return d.emotionLabelY;
-    })
-    .style('font-weight', 900)
-    .attr('fill', function(d) {
-      return d.emotion === 'negative' ? '#5bd1d7' : '#2ECC71';
-    })
-    .text(function(d) { return capitalize(d.emotion) + ': ' + capitalize(d.category); })
-    .style('text-anchor', 'end')
-    .append('tspan')
-    .text(function(d) { return showCount(d.id_list.length); })
-
-
-
-  var colorScale,
-    tempDataSet = sortedRects.negative.concat(sortedRects.positive);
-
-  // colorScale = d3.scaleLinear()
-  //   .domain(d3.extent(tempDataSet))
-  //   .range(['white','red'])
-  colorScale = d3.scaleLinear()
-    .domain([0, 30])
-    .range(['blue','brown'])
-
-  // Display heatmap colored squared
-  var heatmapColX = 520;
-  for (var heatmapCol of Object.keys(heatmapColMapper)) {
-    // tempDataSet = heatmapColMapper[heatmapCol];
-    heatmapColMapper[heatmapCol]
-      .append('rect')
-      .attr('class', function(d) { return heatmapCol + 'Box_' + d.emotion + '_' + d.category; })
-      .attr('x', heatmapColX)
-      .attr('y', function(d) {
-        return d.emotionLabelY - 50;
-      })
-      .attr('width', HEATMAP_BOX_WIDTH)
-      .attr('height', function(d) {
-        return 100;
-      })
-      // .attr('rx', ROUNDED_EDGE)
-      // .style('fill', function(d) {
-      //   var color;
-      //   if (d.heatmapCounts[heatmapCol] < HEATMAP_BUCKET_1_MAX) {
-      //     color = '#FCBF49';
-      //   } else if (d.heatmapCounts[heatmapCol] < HEATMAP_BUCKET_2_MAX) {
-      //     color = '#F77F00';
-      //   } else {
-      //     color = '#D62828';
-      //   }
-      //   return color;
-      // })
-      .attr('fill', function(d) {
-        return colorScale(d.heatmapCounts[heatmapCol]);
-      })
-      .style('opacity', 1)
-      .attr('stroke', 'white')
-      // function(d) {
-      //   return 'white')
-      .attr('stroke-width', BIG_STROKE)
   
-      heatmapColMapper[heatmapCol]
+    // Top horizontal group labels (Employment, Ethnicity, etc.)
+    horizontalLabels
       .append('text')
-      .style('font-size', '16px')
-      .attr('x', heatmapColX + 50)
-      .attr('y', function(d) {
-        return d.emotionLabelY + 5;
+      .attr('id', function(d) {
+        return 'horizontal_' + d.group;
       })
-      .style('font-weight', 900)
-      .attr('fill', 'white')
-      .text(function(d) { return d.heatmapCounts[heatmapCol] + '%'; })
+      .text(function(d) { return capitalize(d.group); })
+      .attr('fill', 'black')
+      .attr('x', function(d) {
+        return d.x;
+      })
+      .attr('y', 20)
       .style('text-anchor', 'middle')
+      .style('font-weight', 900)
+      .style('font-size', '24px')
 
-    heatmapColX += ['otherTime', 'non_asian', 'non_income_under_80'].includes(heatmapCol) ? 150 : 100;
-  }
+    // Singular top label for ethnicity & income combinations
+    heatmap.select('#emotionLabels')
+      .append('g')
+      .append('text')
+      .attr('id', 'horizontal_ethnicityANDincome')
+      .text('Ethnicity & Income')
+      .attr('fill', 'black')
+      .attr('x', 720)
+      .attr('y', SECOND_HEATMAP_OFFSET - 50)
+      .style('text-anchor', 'middle')
+      .style('font-weight', 900)
+      .style('font-size', '24px')
+
+    // Demographic labels above squares
+    var heatmapLabelX = 570,
+      singleDemographics = ['Full Time', 'Part Time', 'Other', 'Asian', 'Non-Asian', 'Less Than $80k', '$80k and Up', 'Less Than 30', '30 and Up'],
+      comboDemographics = ['Asian Earning <$80k', 'Asian Earning $80k+', 'Non-Asian Earning <$80k', 'Non-Asian Earning $80k+'];
+    heatmap.select('#topLabels')
+      .selectAll('path')
+      .data(singleDemographics.concat(comboDemographics))
+      .enter()
+      .append('text')
+      .style('font-size', '20px')
+      .attr('x', function(d) {
+        var toRet = heatmapLabelX;
+        heatmapLabelX += ['Other', 'Non-Asian', '$80k and Up'].includes(d) ? 120 : 100;
+        ['30 and Up', 'Non-Asian Earning $80k+'].includes(d) && (heatmapLabelX = 570); // reset for 2nd heatmap's transform x's
+        return toRet - 20;
+      })
+      .attr('y', function(d) {
+        return comboDemographics.includes(d) ? SECOND_HEATMAP_OFFSET + 140 : 140;
+      })
+      .style('font-weight', 600)
+      .attr('fill', 'black')
+      .text(function(d) {
+        return d;
+      })
+      .attr('transform', function(d) {
+        var toRet = heatmapLabelX,
+          y;
+        heatmapLabelX += ['Other', 'Non-Asian', '$80k and Up'].includes(d) ? 120 : 100;
+        y = comboDemographics.includes(d) ? SECOND_HEATMAP_OFFSET + 140 : 140;
+        d === '30 and Up' && (heatmapLabelX = 570);
+        return 'rotate(315, ' + (toRet - 20) + ', ' + y + ')';
+      })
+
+    // Negative/Positive verticals labels to the left
+    for (var yy of [0, SECOND_HEATMAP_OFFSET]) {
+      verticalLabels
+        .append('text')
+        .attr('id', function(d) {
+          return 'vertical_' + d.emotion;
+        })
+        .text(function(d) { return capitalize(d.emotion); })
+        .attr('fill', function(d) {
+          return d.emotion === 'negative' ? '#5bd1d7' : '#2ECC71';
+        })
+        .attr('x', 100)
+        .attr('y', function(d) {
+          return d.y + yy;
+        })
+        .style('font-weight', 900)
+        .style('font-size', '36px')
+        .attr('transform', function(d) {
+          return 'rotate(270, 100, ' + (d.y + yy) + ')';
+        })
+    }
+
+    // Left-hand labels for the 10 emotions
+    for (var yy of [0, SECOND_HEATMAP_OFFSET]) {
+      emotionLabels
+        .append('text')
+        .attr('id', function(d) {
+          return d.emotion + '_' + d.category + '_heatmap_' + yy;
+        })
+        .attr('class', 'heatmapLabel')
+        .style('font-size', '24px')
+        .attr('x', 475)
+        .attr('y', function(d) {
+          return d.emotionLabelY + yy;
+        })
+        .style('font-weight', 900)
+        .attr('fill', function(d) {
+          return d.emotion === 'negative' ? '#5bd1d7' : '#2ECC71';
+        })
+        .text(function(d) { return capitalize(d.category); })
+        .style('text-anchor', 'end')
+        .append('tspan')
+        .text(function(d) { return showCount(d.id_list.length); })
+    }
+
+    var tooltipToFind;
+
+    function tooltip(box, col, emotion, category) {
+      // heatmap.select(this)
+      // .style('opacity', 0.2)
+      console.log(col, emotion, category);
+      tooltipToFind = '[tooltipDesc="' + col + '+' + emotion + '+' + category + '"]';
+      heatmap.select(tooltipToFind)
+        .style('visibility', 'visible')
+    }
+
+    var colorScale,
+      tempDataSet = sortedRects.negative.concat(sortedRects.positive);
+
+    colorScale = d3.scaleLinear()
+      .domain([0, 30])
+      .range(['blue','brown'])
+
+    // Display heatmap colored squared
+    var heatmapColX = 520,
+      comboDemographics = ['asianANDincome_under_80', 'asianANDnon_income_under_80', 'non_asianANDincome_under_80', 'non_asianANDnon_income_under_80'];
+    for (var heatmapCol of Object.keys(heatmapColMapper)) {
+      heatmapColMapper[heatmapCol]
+        .append('rect')
+        .attr('class', 'hoverRect')
+        .attr('colName', function(d) { return heatmapCol; })
+        .attr('x', heatmapColX)
+        .attr('y', function(d) {
+          var yy = comboDemographics.includes(heatmapCol) ? SECOND_HEATMAP_OFFSET : 0;
+          return d.emotionLabelY + yy - 50;
+        })
+        .attr('width', HEATMAP_BOX_WIDTH)
+        .attr('height', function(d) {
+          return 100;
+        })
+        .attr('fill', function(d) {
+          return colorScale(d.heatmapCounts[heatmapCol]);
+        })
+        .style('opacity', 1)
+        .attr('stroke', 'white')
+        .attr('stroke-width', 1)
+    
+      // Percentage text inside squares
+      heatmapColMapper[heatmapCol]
+        .append('text')
+        .attr('class', 'hoverRectText hoverRect')
+        .attr('colName', function(d) { return heatmapCol; })
+        .style('font-size', '24px')
+        .attr('x', heatmapColX + 50)
+        .attr('y', function(d) {
+          var yy = comboDemographics.includes(heatmapCol) ? SECOND_HEATMAP_OFFSET : 0;
+          return d.emotionLabelY + yy + 9;
+        })
+        .style('font-weight', 900)
+        .attr('fill', 'white')
+        .text(function(d) { return d.heatmapCounts[heatmapCol] + '%'; })
+        .style('text-anchor', 'middle')
+
+      heatmap.selectAll('.hoverRect')
+        .on('mouseover', function(box) {
+          d3.select(this.parentNode).select('.hoverRectText')
+            .style('font-size', '36px')
+            .style('font-weight', 600)
+            .attr('y', function() {
+              return parseInt(this.getAttribute('y')) + 5;
+            })
+          tooltip(this, box.currentTarget.getAttribute('colName'), box.currentTarget.__data__.emotion, box.currentTarget.__data__.category);
+        })
+        .on('mouseout', function() {
+          d3.select(this.parentNode).select('.hoverRectText')
+            .style('font-size', '24px')
+            .style('font-weight', 900)
+            .attr('y', function() {
+              return parseInt(this.getAttribute('y')) - 5;
+            })
+          heatmap.select(tooltipToFind)
+            .style('visibility', 'hidden')
+        })
+
+      // Mouseover count / col total text
+      heatmapColMapper[heatmapCol]
+        .append('text')
+        .attr('id', function(d) {
+          return 'tooltip_' + heatmapCol + '_' + d.emotion + '_' + d.category;
+        })
+        .attr('tooltipDesc', function(d) {
+          return heatmapCol + '+' + d.emotion + '+' + d.category;
+        })
+        .style('font-size', '24px')
+        .attr('x', 400)
+        .attr('y', function(d) {
+          return comboDemographics.includes(heatmapCol) ? SECOND_HEATMAP_OFFSET + 100 : 100;
+        })
+        .style('font-weight', 900)
+        .attr('fill', 'black')
+        .text(function(d) {
+          return d.heatmapCounts[heatmapCol + '_tooltip'];
+        })
+        .style('text-anchor', 'middle')
+        .style('visibility', 'hidden')
+
+      heatmapColX += ['otherTime', 'non_asian', 'non_income_under_80'].includes(heatmapCol) ? 120 : 100;
+      heatmapCol === 'non_receiver_under_30' && (heatmapColX = 520);
+    }
 
   }); // END HEATMAP
 
