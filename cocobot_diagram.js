@@ -1,13 +1,14 @@
-// Ulysses Lin
-// CoCoBot diagram prototype
+/*
+Ulysses Lin
+2022-2023
+CoCoBot study results interactive diagram and heatmaps
+This code is authorized for use by members of the CoCoBot project
+For more information on usage, please read the README file
+*/
 
-// The svg
 var svg = d3.select("#diagram"),
-  heatmap = d3.select('#heatmap');
-
-  // ------------------------------------------------------------------------------------COCOBOT
-
-var clicked = false,
+  heatmap = d3.select('#heatmap'),
+  clicked = false,
   countByPerson = true,
   rectClicked,
   filterClicked = false,
@@ -19,11 +20,13 @@ var clicked = false,
     byIncome: false,
     byCareReceiverAge: false
   },
+  // These ethnic labels were given the "Asian" association
+  // Alter the list to recategorize
   asianCategory = [
     'asian', 'asian - chinese', 'asian indian', 'chinese', 'japanese', 'korean', 'pacific islander and south asian', 'other: asian/ caucasian'
   ],
-  // maps subcategory to category
-  // ex: subcategory 'partner+issues' maps to category 'love and belonging'
+  // Maps subcategory to category
+  // Ex: subcategory 'partner+issues' maps to category 'love and belonging'
   emotionMapper = {
     'self-care+good food': 'physiological',
     'self-care+nap': 'physiological',
@@ -49,7 +52,7 @@ var clicked = false,
     'spouse+spend time': 'love and belonging',
     'partner+good communication': 'love and belonging',
     'self-care+socialize with friends': 'love and belonging',
-    'Negative from others': 'love and belonging',
+    'from others': 'love and belonging', // (Negative from others)
     'kids+difficult behavior+tantrums': 'love and belonging',
     'kids+health': 'love and belonging',
     'kids+not enough time': 'love and belonging',
@@ -109,11 +112,40 @@ var clicked = false,
   boxHeight,
   boxHeightByInstance,
   boxHeightByPerson,
+  WORK_MAPPER = { // NOTE: you can re-map these user-given values to 'fullTime', 'partTime' categorizations; anthing else is 'other'
+    'full time': 'fullTime',
+    'full-time': 'fullTime',
+    'full time employed': 'fullTime',
+    'full time work': 'fullTime',
+    'full time worker': 'fullTime',
+    'full-time unpaid caregive': 'fullTime',
+    'employed': 'fullTime',
+    'employed full-time': 'fullTime',
+    'ft': 'fullTime',
+    'work full time': 'fullTime',
+    'work fulltime': 'fullTime',
+    'work full-time': 'fullTime',
+    'working .8 fte': 'fullTime',
+    'working full time': 'fullTime',
+    'working full-time': 'fullTime',
+    'working full-time and caregiving': 'fullTime',
+    'employed part time': 'partTime',
+    '2 part time jobs & homeschool': 'partTime',
+    'part time': 'partTime',
+    'part time employed': 'partTime',
+    'part time worker': 'partTime',
+    'part-time self employed, part-time employed elsewhere': 'partTime',
+    'working half-time': 'partTime',
+    'working part time': 'partTime',
+    'working part-time': 'partTime'
+  },
+  NEGATIVE_COLOR = '#5bd1d7', // color for Negative rectangles and heatmap text (originally teal)
+  POSITIVE_COLOR = '#2ECC71', // color for Positive rectangles and heatmap text (originally green)
   COL_WIDTH = 250,
   INIT_Y = 100,
   BOTTOM_MARGIN = 100,
   LABEL_Y = 50,
-  ROUNDED_EDGE = 8;
+  ROUNDED_EDGE = 8,
   BIG_STROKE = 8,
   SVG_HEIGHT = 2000,
   HEATMAP_BOX_HEIGHT = 100,
@@ -122,6 +154,7 @@ var clicked = false,
   HEATMAP_BUCKET_1_MAX = 10,
   HEATMAP_BUCKET_2_MAX = 20,
   SECOND_HEATMAP_OFFSET = 1400,
+  OTHER_THRESHOLD = 28, // You can play with this pixel high threshold; the lower the #, the lower the max-height for a subcategory's text (i.e., you'll probably see Other split into more categories, but the text may be squished vertically)
   TOP_COUNT = 5; // # of top categories to display
 
 function capitalize(word) {
@@ -132,10 +165,12 @@ function showCount(count) {
   return count === 1 ? '' : ' (' + count + ')';
 }
 
+// Returns true for non-tester ID
 function checkID(id) {
   return id != 'tester' && id.length === 4;
 }
 
+// Adds ID to list of correlated users
 function addID(id, emotion, category) {
   if (checkID(id)) {
     var modded = parseInt(id.trim());
@@ -163,6 +198,7 @@ function addCategoryID(list, id) {
   }
 }
 
+// Returns true if a person's income is under $80K
 function under80K(income) {
   var cleanedIncome = income.trim();
   if (cleanedIncome === 'I do not know/do not want to share') {
@@ -217,28 +253,30 @@ function wrap(text, width) {
 
 
 
-
+// Currently uses the data file stored on my personal GitHub
+// NOTE: you may replace the below GitHub posted .csv file with your own, as long as it is either on GitHub or in the same folder as the cocobot_diagram.js file
 d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_data_old.csv').then(function(data) {
+// d3.csv('/all_data_old.csv').then(function(data) {
   var topY = INIT_Y,
-    topYByPerson = INIT_Y;
+    topYByPerson = INIT_Y,
+    labels; // for the filters at top
 
-  var labels = d3.select('#diagram_inputs')
-      .selectAll()
-      .data(['Asian', 'Count by Person', 'Income Under $80K', 'Care Receiver Under 30'])
-      .enter()
-      .append('label');
+  labels = d3.select('#diagram_inputs')
+    .selectAll()
+    .data(['Asian', 'Count by Person', 'Income Under $80K', 'Care Receiver Under 30'])
+    .enter()
+    .append('label');
 
   labels.append('input')
-      .attr('type', 'checkbox')
-      .attr('class', function(d) { return 'checkbox ' + d.toLowerCase().split(' ').join('_'); })
-      .property('checked', function(d) { return d === 'Count by Person'; })
-      .attr('name', function(d) { return d; })
-      .attr('value', function(d) { return d.toLowerCase(); })
-      // .style('accent-color', function(d) { return colors[d.toLowerCase()]; })
-      .on('change', change)
+    .attr('type', 'checkbox')
+    .attr('class', function(d) { return 'checkbox ' + d.toLowerCase().split(' ').join('_'); })
+    .property('checked', function(d) { return d === 'Count by Person'; })
+    .attr('name', function(d) { return d; })
+    .attr('value', function(d) { return d.toLowerCase(); })
+    .on('change', change)
   
   labels.append('span')
-      .text(function(d) { return d; })
+    .text(function(d) { return d; })
 
   // Parse the raw data
   // Sift out Ambiguous, group items by emotion
@@ -246,11 +284,10 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     var thisRow = data[row],
       thisEmotion;
 
-    // if (thisEmotion === '' && thisRow.Labels === '' && thisRow.Example === '') {
     if (thisRow.Emotion === 'END') {
       break;
     }
-    if (!!thisRow.Emotion && emotions.includes(thisRow.Emotion.trim().toLowerCase())) {
+    if (!!thisRow.Emotion && checkID(thisRow.ID_NO) && emotions.includes(thisRow.Emotion.trim().toLowerCase())) {
       var category = '',
         subCategory = '';
 
@@ -263,23 +300,15 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
           subCategorySplitted[i] = subCategorySplitted[i].trim();
         }
         subCategory = subCategorySplitted.join('+');
-        // if (lowerCaselabels === "other's health") {
-        //   lowerCaselabels = 'others health';
-        // }
         if (!!emotionMapper[subCategory]) {
           category = emotionMapper[subCategory];
         } else {
-          category = 'other';
+          category = 'other'; // NOTE: this includes things not categorized in the AMIA2022_Table file (work+struggling, work+too much work, work+unfulfilling, general)
         }
-        // var splitted = thisRow.Labels.split('+');
-        // category = splitted[0].trim();
 
         // Category
-        if (emotionList[thisEmotion][category]) { // category already exists in this emotion
+        if (emotionList[thisEmotion][category]) { // category already exists in this emotion, so increment
           emotionList[thisEmotion][category].count++;
-          // if (thisRow.Asian_Count === 'X') {
-          //   emotionList[thisEmotion][category].asian_count++;
-          // }
         } else { // category does not yet exist, so create
           if (thisEmotion === 'ambiguous') {
             emotionList.ambiguous[category] = {
@@ -301,28 +330,28 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
             };
           }
         }
-        thisEmotion != 'ambiguous' && addID(thisRow.ID_NO, thisEmotion, category);
-        thisEmotion != 'ambiguous' && addCategoryID(emotionList[thisEmotion][category].id_list, thisRow.ID_NO);
+        if (thisEmotion != 'ambiguous') {
+          addID(thisRow.ID_NO, thisEmotion, category);
+          addCategoryID(emotionList[thisEmotion][category].id_list, thisRow.ID_NO);
 
-        // Subcategory
-        // if (thisEmotion != 'ambiguous' && !!splitted[1]) {
-        if (thisEmotion != 'ambiguous' && subCategory) {
-          var subList = emotionList[thisEmotion][category].subCategories;
-
-          // subCategory = splitted[1].trim();
-          if (!!subList[subCategory]) {
-            subList[subCategory].count++;
-          } else {
-            subList[subCategory] = {
-              category: category,
-              subCategory: subCategory.toLowerCase(),
-              count: 1,
-              id_list: [],
-              y: 0,
-              yByPerson: 0
-            };
+          // Tally subcategory
+          if (!!subCategory) {
+            var subList = emotionList[thisEmotion][category].subCategories;
+    
+            if (!!subList[subCategory]) {
+              subList[subCategory].count++;
+            } else {
+              subList[subCategory] = {
+                category: category,
+                subCategory: subCategory.toLowerCase(),
+                count: 1,
+                id_list: [],
+                y: 0,
+                yByPerson: 0
+              };
+            }
+            addCategoryID(subList[subCategory].id_list, thisRow.ID_NO);
           }
-          addCategoryID(subList[subCategory].id_list, thisRow.ID_NO);
         }
       }
     } else {
@@ -372,6 +401,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
 
   // Get max counts
   // (find max count amount paired categories, then the longest collective remainder by emotion)
+  // Used primarily for box height calculations
   var maxCount = 0,
     maxCountByPerson = 0,
     mismatchedNegCount = 0,
@@ -445,12 +475,12 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     topYByPerson = lastMatchedBottomYByPerson;
   }
 
-  // Subcategories: TODO: logic for cutting off for Other is very poor
-  // Sorting and text logic for subcategories
+  // Subcategories
+  // If the subcategory count is too low, it's height would be shorter than the font, and is thus grouped into "Other"
+  // Stretch goal: logic for cutting off for Other is poor
   for (var type of ['negative', 'positive']) {
     for (var category in sortedRects[type]) {
-      var subs = sortedRects[type][category].subCategories,
-        currCategory = sortedRects[type][category].category;
+      var subs = sortedRects[type][category].subCategories;
 
       if (!!Object.keys(subs).length) {
         var count = 0,
@@ -463,13 +493,8 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
         }).reverse();
         var otherN = -1;
         for (var n = 0; n < tempSorter.length; n++) {
-          // the cutoff should be a little over the px height of text OR cutoff if long text
-          // if (tempSorter[n].count * boxHeight < 20 || (tempSorter[n].subCategory.length + tempSorter[n].count.toString().length > 27 && tempSorter[n].count * boxHeight < 40)) {
-          //   tempSorter[n - 1].subCategory = 'Other';
-          //   otherN = n - 1;
-          //   break;
-          // }
-          if (tempSorter[n].count * boxHeightByInstance < 20 || (tempSorter[n].subCategory.length + tempSorter[n].count.toString().length > 27 && tempSorter[n].count * boxHeightByInstance < 40)) {
+          var counter = countByPerson ? tempSorter[n].id_list.length : tempSorter[n].count;
+          if (counter * boxHeightByPerson < OTHER_THRESHOLD || (tempSorter[n].subCategory.length + counter.toString().length > 27 && counter * boxHeightByPerson < 40)) {
             tempSorter[n - 1].subCategory = 'Other';
             otherN = n - 1;
             break;
@@ -479,7 +504,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
           for (var i = otherN; i < tempSorter.length; i++) {
             count += tempSorter[i].count;
           }
-          tempSorter[otherN].count = count;
+          tempSorter[otherN].otherCount = count;
           tempSorter.length = otherN + 1;
         }
         topY = sortedRects[type][category].y;
@@ -487,7 +512,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
         var totalInstanceCounts = 0,
           totalPersonCounts = 0;
         for (var subcat of tempSorter) {
-          totalPersonCounts += subcat.id_list.length;
+          totalPersonCounts += subcat.otherCount || subcat.id_list.length;
           totalInstanceCounts += subcat.count;
         }
 
@@ -496,7 +521,6 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
           tempByPerson = topYByPerson;
           topY += (tempSorter[n].count * boxHeightByInstance);
           topYByPerson += (tempSorter[n].id_list.length / totalPersonCounts) * sortedRects[type][category].id_list.length * boxHeight;
-          // topYByPerson += tempSorter[n].id_list.length * boxHeightByPerson;
           tempSorter[n].y = temp;
           tempSorter[n].yByPerson = tempByPerson;
         }
@@ -507,6 +531,8 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
 
 
 
+  // HEATMAPS
+
   // User List
   var userListArray = [];
   for (var [key, value] of Object.entries(correlation)) {
@@ -514,34 +540,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
   }
 
   function mapEmployment(rawEmployment) {
-    var mapper = {
-      'full time': 'fullTime',
-      'full-time': 'fullTime',
-      'full time employed': 'fullTime',
-      'full time work': 'fullTime',
-      'full time worker': 'fullTime',
-      'full-time unpaid caregive': 'fullTime',
-      'employed': 'fullTime',
-      'employed full-time': 'fullTime',
-      'ft': 'fullTime',
-      'work full time': 'fullTime',
-      'work fulltime': 'fullTime',
-      'work full-time': 'fullTime',
-      'working .8 fte': 'fullTime',
-      'working full time': 'fullTime',
-      'working full-time': 'fullTime',
-      'working full-time and caregiving': 'fullTime',
-      'employed part time': 'partTime',
-      '2 part time jobs & homeschool': 'partTime',
-      'part time': 'partTime',
-      'part time employed': 'partTime',
-      'part time worker': 'partTime',
-      'part-time self employed, part-time employed elsewhere': 'partTime',
-      'working half-time': 'partTime',
-      'working part time': 'partTime',
-      'working part-time': 'partTime'
-    };
-    return mapper[rawEmployment] || 'otherTime';
+    return WORK_MAPPER[rawEmployment] || 'otherTime';
   }
 
   var totalHeatmapCounts = {
@@ -577,7 +576,10 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     }
   };
 
-  d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/coco-demographics.csv').then(function(data) {
+  // NOTE: you may replace the below GitHub posted .csv file with your own, as long as it is either on GitHub or in the same folder as the cocobot_diagram.js file
+  // d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/coco-demographics.csv').then(function(data) {
+  d3.csv('/coco-demographics.csv').then(function(data) {
+    // Demographically categorize each person
     for (var csvPerson of data) {
       if (correlation[csvPerson.Id]) {
         var correlationPerson = correlation[csvPerson.Id];
@@ -589,11 +591,10 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
       }
     }
 
-    // by person count, not instance
+    // By person count, not instance
     function getEmotionPercents() {
       for (var emotion of ['negative', 'positive']) {
         for (var categoryRect of sortedRects[emotion]) {
-          var tempTotal = 0;
           if (!categoryRect.heatmapCounts) {
             categoryRect.heatmapCounts = {
               'fullTime': 0,
@@ -656,6 +657,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
   
     var emotionLabelY = 200;
   
+    // Spacing for negative and positive labels for heatmaps
     for (var emotionLabel of sortedRects.negative) {
       emotionLabel.emotionLabelY = emotionLabelY;
       emotionLabelY += HEATMAP_BOX_HEIGHT;
@@ -676,7 +678,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     // Create heatmap column wrappers (<g>)
     heatmap.select('#heatmapDiagram')
       .selectAll('path')
-      .data(['emotionLabels', 'topLabels', 'fullTimeCol', 'partTimeCol', 'otherTimeCol', 'asianCol', 'non_asianCol', 'income_under_80Col', 'non_income_under_80Col', 'receiver_under_30Col', 'non_receiver_under_30Col', 'asianANDincome_under_80Col', 'asianANDnon_income_under_80Col', 'non_asianANDincome_under_80Col', 'non_asianANDnon_income_under_80Col'])
+      .data(['emotionLabels', 'groupLabels', 'fullTimeCol', 'partTimeCol', 'otherTimeCol', 'asianCol', 'non_asianCol', 'income_under_80Col', 'non_income_under_80Col', 'receiver_under_30Col', 'non_receiver_under_30Col', 'asianANDincome_under_80Col', 'asianANDnon_income_under_80Col', 'non_asianANDincome_under_80Col', 'non_asianANDnon_income_under_80Col'])
       .enter()
       .append('g')
       .attr('id', function(d) {
@@ -704,6 +706,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
         non_asianANDnon_income_under_80: non_asianANDnon_income_under_80
       };
 
+    // Create column wrappers
     for (var key of Object.keys(heatmapColMapper)) {
       heatmapColMapper[key] = heatmap.select('#' + key + 'Col')
         .selectAll('path')
@@ -713,7 +716,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
         .attr('width', 100)
     }
 
-
+    // Wrappers for blue and green labels to the left
     var emotionLabels = heatmap.select('#emotionLabels')
       .selectAll('path')
       .data(sortedRects.negative.concat(sortedRects.positive))
@@ -721,7 +724,8 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
       .append('g')
       .attr('width', 100)
 
-    var verticalLabels = heatmap.select('#topLabels')
+    // Wrappers for group labels at the top and side ("Employment", "Negative", etc.)
+    var verticalLabels = heatmap.select('#groupLabels')
       .selectAll('path')
       .data([
         {
@@ -736,7 +740,8 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
       .enter()
       .append('g')
 
-    var horizontalLabels = heatmap.select('#emotionLabels')
+    // Wrappers and positioning of the top group labels
+    var horizontalLabels = heatmap.select('#groupLabels')
       .selectAll('path')
       .data([
         {
@@ -761,7 +766,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
 
 
   
-    // Top horizontal group labels (Employment, Ethnicity, etc.)
+    // Top horizontal group labels ("Employment", "Ethnicity", etc.)
     horizontalLabels
       .append('text')
       .attr('id', function(d) {
@@ -777,7 +782,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
       .style('font-weight', 900)
       .style('font-size', '24px')
 
-    // Singular top label for ethnicity & income combinations
+    // Singular top label for ethnicity & income combinations (2nd heatmap)
     heatmap.select('#emotionLabels')
       .append('g')
       .append('text')
@@ -794,7 +799,8 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     var heatmapLabelX = 570,
       singleDemographics = ['Full Time', 'Part Time', 'Other', 'Asian', 'Non-Asian', 'Less Than $80k', '$80k and Up', 'Less Than 30', '30 and Up'],
       comboDemographics = ['Asian Earning <$80k', 'Asian Earning $80k+', 'Non-Asian Earning <$80k', 'Non-Asian Earning $80k+'];
-    heatmap.select('#topLabels')
+
+    heatmap.select('#groupLabels')
       .selectAll('path')
       .data(singleDemographics.concat(comboDemographics))
       .enter()
@@ -814,7 +820,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
       .text(function(d) {
         return d;
       })
-      .attr('transform', function(d) {
+      .attr('transform', function(d) { // lean them diagonally
         var toRet = heatmapLabelX,
           y;
         heatmapLabelX += ['Other', 'Non-Asian', '$80k and Up'].includes(d) ? 120 : 100;
@@ -823,7 +829,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
         return 'rotate(315, ' + (toRet - 20) + ', ' + y + ')';
       })
 
-    // Negative/Positive verticals labels to the left
+    // Negative/Positive vertical labels to the left
     for (var yy of [0, SECOND_HEATMAP_OFFSET]) {
       verticalLabels
         .append('text')
@@ -832,7 +838,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
         })
         .text(function(d) { return capitalize(d.emotion); })
         .attr('fill', function(d) {
-          return d.emotion === 'negative' ? '#5bd1d7' : '#2ECC71';
+          return d.emotion === 'negative' ? NEGATIVE_COLOR : POSITIVE_COLOR;
         })
         .attr('x', 100)
         .attr('y', function(d) {
@@ -840,7 +846,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
         })
         .style('font-weight', 900)
         .style('font-size', '36px')
-        .attr('transform', function(d) {
+        .attr('transform', function(d) { // turn on side
           return 'rotate(270, 100, ' + (d.y + yy) + ')';
         })
     }
@@ -860,7 +866,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
         })
         .style('font-weight', 900)
         .attr('fill', function(d) {
-          return d.emotion === 'negative' ? '#5bd1d7' : '#2ECC71';
+          return d.emotion === 'negative' ? NEGATIVE_COLOR : POSITIVE_COLOR;
         })
         .text(function(d) { return capitalize(d.category); })
         .style('text-anchor', 'end')
@@ -870,25 +876,21 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
 
     var tooltipToFind;
 
+    // Show the upper
     function tooltip(box, col, emotion, category) {
-      // heatmap.select(this)
-      // .style('opacity', 0.2)
-      console.log(col, emotion, category);
       tooltipToFind = '[tooltipDesc="' + col + '+' + emotion + '+' + category + '"]';
       heatmap.select(tooltipToFind)
         .style('visibility', 'visible')
     }
 
-    var colorScale,
-      tempDataSet = sortedRects.negative.concat(sortedRects.positive);
-
-    colorScale = d3.scaleLinear()
+    var colorScale = d3.scaleLinear()
       .domain([0, 30])
       .range(['blue','brown'])
 
-    // Display heatmap colored squared
+    // Display heatmap colored squares
     var heatmapColX = 520,
       comboDemographics = ['asianANDincome_under_80', 'asianANDnon_income_under_80', 'non_asianANDincome_under_80', 'non_asianANDnon_income_under_80'];
+
     for (var heatmapCol of Object.keys(heatmapColMapper)) {
       heatmapColMapper[heatmapCol]
         .append('rect')
@@ -926,6 +928,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
         .text(function(d) { return d.heatmapCounts[heatmapCol] + '%'; })
         .style('text-anchor', 'middle')
 
+      // Animation for hovering over squares
       heatmap.selectAll('.hoverRect')
         .on('mouseover', function(box) {
           d3.select(this.parentNode).select('.hoverRectText')
@@ -947,7 +950,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
             .style('visibility', 'hidden')
         })
 
-      // Mouseover count / col total text
+      // Mouseover count / col total text in upper left
       heatmapColMapper[heatmapCol]
         .append('text')
         .attr('id', function(d) {
@@ -976,6 +979,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
   }); // END HEATMAP
 
 
+  // Logging objects made
   console.log('correlation', correlation);
   console.log('emotionList', emotionList);
   console.log('cols.subNegative', cols.subNegative);
@@ -984,53 +988,28 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
   console.log('cols.positive', cols.positive);
   console.log('rects.negative', rects.negative);
   console.log('rects.positive', rects.positive);
-  console.log('sortedRects.negative', sortedRects.negative);
+  console.log('sortedRects.negative', sortedRects.negative); // sortedRects are probably the most important to track
   console.log('sortedRects.positive', sortedRects.positive);
   console.log('sortedRects.subNegative', sortedRects.subNegative);
   console.log('sortedRects.subPositive', sortedRects.subPositive);
 
   
 
+  /****************************************************************************************
+  Interactive diagram with Negative and Positive blue/green columns and subcategory columns
+  *****************************************************************************************/
   svg.append('g')
     .attr('id', 'coCoBotDiagram')
 
+  // Wrappers for columns
   svg.select('#coCoBotDiagram')
+    .selectAll('path')
+    .data(['negativeColSub', 'negativeCol', 'correlatedNegativeCol', 'positiveCol', 'positiveColSub'])
+    .enter()
     .append('g')
-    .attr('id', 'negativeColSub')
+    .attr('id', function(d) { return d; })
 
-  svg.select('#coCoBotDiagram')
-    .append('g')
-    .attr('id', 'negativeCol')
-
-  svg.select('#coCoBotDiagram')
-    .append('g')
-    .attr('id', 'correlatedNegativeCol')
-
-  svg.select('#coCoBotDiagram')
-    .append('g')
-    .attr('id', 'positiveCol')
-
-  svg.select('#coCoBotDiagram')
-    .append('g')
-    .attr('id', 'positiveColSub')
-
-  // d3.select('#dropdown_container')
-  //   .append('select')
-  //   .attr('name', 'userList')
-  //   .attr('id', 'userList')
-
-  
-
-  // var userList = d3.select('#userList')
-  //     .selectAll()
-  //     .data(userListArray)
-  //     .enter()
-  //     .append('option')
-  //     .attr('value', function(d) { return d; })
-  //     .text(function(d) { return d; })
-
-  // d3.select('#userList').on('change', function() { console.log('changed userList item!'); })
-
+  // Negative subcategories column rectangles wrappers
   var subNegativeRectangles = svg.select('#negativeColSub')
     .selectAll('path')
     .data(sortedRects.negative)
@@ -1038,6 +1017,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     .append('g')
     .attr('width', COL_WIDTH);
 
+  // Negative subcategories text wrappers
   var subNegatives = svg.select('#negativeColSub')
     .selectAll('path')
     .data(sortedRects.subNegative)
@@ -1045,6 +1025,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     .append('g')
     .attr('width', COL_WIDTH);
 
+  // Negative column rectangles wrappers
   var negatives = svg.select('#negativeCol')
     .selectAll('path')
     .data(sortedRects.negative)
@@ -1053,13 +1034,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     .attr('width', COL_WIDTH)
     .on('click', animateCorrelation)
 
-  var correlatedNegatives = svg.select('#correlatedNegativeCol')
-    .selectAll('path')
-    .data(sortedRects.negative)
-    .enter()
-    .append('g')
-    .attr('width', COL_WIDTH);
-
+  // Positive column rectangles wrappers
   var positives = svg.select('#positiveCol')
     .selectAll('path')
     .data(sortedRects.positive)
@@ -1068,13 +1043,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     .attr('width', COL_WIDTH)
     .on('click', animateCorrelation)
 
-  var correlatedPositives = svg.select('#correlatedPositiveCol')
-    .selectAll('path')
-    .data(sortedRects.positive)
-    .enter()
-    .append('g')
-    .attr('width', COL_WIDTH);
-
+  // Positive subcategories rectangles wrappers
   var subPositiveRectangles = svg.select('#positiveColSub') // note: rects must come before text/lines
     .selectAll('path')
     .data(sortedRects.positive)
@@ -1082,6 +1051,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     .append('g')
     .attr('width', COL_WIDTH);
     
+  // Positive subcategories text wrappers
   var subPositives = svg.select('#positiveColSub')
     .selectAll('path')
     .data(sortedRects.subPositive)
@@ -1089,7 +1059,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     .append('g')
     .attr('width', COL_WIDTH);
 
-
+  // Labelling
   svg.select("#negativeColSub")
     .append('text')
     .style('font-size', '16px')
@@ -1140,11 +1110,10 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     })
     .attr('width', COL_WIDTH)
     .attr('height', function(d) {
-      // return Object.keys(d.subCategories).length == 0 ? 0 : d.count * boxHeight;
       return (countByPerson ? d.id_list.length : d.count) * boxHeight;
     })
     .attr('rx', ROUNDED_EDGE)
-    .style('fill', '#5bd1d7')
+    .style('fill', NEGATIVE_COLOR)
     .style('opacity', 0.5)
     .attr('stroke', 'white')
     .attr('stroke-width', BIG_STROKE)
@@ -1153,32 +1122,30 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
   subNegatives
     .append('text')
     .attr('class', 'subNegative')
-    .style('font-size', '16px')
+    .style('font-size', '12px')
     .attr('x', 340)
     .attr('y', function(d) {
-      return d.yByPerson + 20;
+      return d.yByPerson + 16;
     })
     .style('font-weight', 600)
     .attr('fill', '#17223b')
     .text(function(d) {
-      return capitalize(d.subCategory) + ' ' + showCount(d.id_list.length);
+      return capitalize(d.subCategory) + ' ' + showCount(d.subCategory === 'Other' ? d.otherCount : d.id_list.length);
     })
     .style('text-anchor', 'end')
     .style('border', 'white')
     .call(wrap, 230)
-    // .append('tspan')
-    // .text(function(d) { return showCount(d.count); })
 
   // Negative Subcategory Border Lines
   subNegatives
-    .append("line")
+    .append('line')
       .attr('class', 'subNegativeLine')
-      .attr("x1", 100)
-      .attr("x2", 350)
-      .attr("y1", function(d) { return d.yByPerson; })
-      .attr("y2", function(d) { return d.yByPerson; })
-      .attr("stroke", "white")
-      .attr("stroke-width", "2px")
+      .attr('x1', 100)
+      .attr('x2', 350)
+      .attr('y1', function(d) { return d.yByPerson; })
+      .attr('y2', function(d) { return d.yByPerson; })
+      .attr('stroke', 'white')
+      .attr('stroke-width', '2px')
 
   // Negative Column Rectangles
   negatives
@@ -1193,7 +1160,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
       return (countByPerson ? d.id_list.length : d.count) * boxHeight;
     })
     .attr('rx', ROUNDED_EDGE)
-    .style('fill', '#5bd1d7')
+    .style('fill', NEGATIVE_COLOR)
     .style('opacity', 1)
     .attr('stroke', 'white')
     .attr('stroke-width', BIG_STROKE)
@@ -1210,15 +1177,10 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
       return (countByPerson ? d.yByPerson : d.y) + BIG_STROKE/2;
     })
     .attr('width', COL_WIDTH - BIG_STROKE)
-    .attr('height', function(d) {
-      return 0;
-      // return d.correlatedCount * boxHeight;
-    })
+    .attr('height', 0)
     .attr('rx', ROUNDED_EDGE)
-    .style('fill', '#5bd1d7')
+    .style('fill', NEGATIVE_COLOR)
     .style('opacity', 1)
-    // .attr('stroke', 'white')
-    // .attr('stroke-width', BIG_STROKE)
 
   topY = INIT_Y;
 
@@ -1232,7 +1194,6 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     .style('font-size', '16px')
     .attr('x', 475)
     .attr('y', function(d) {
-      // return d.y + 20;
       return (countByPerson ? d.yByPerson : d.y) + 20;
     })
     .style('font-weight', 600)
@@ -1261,7 +1222,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
       return (countByPerson ? d.id_list.length : d.count) * boxHeight;
     })
     .attr('rx', ROUNDED_EDGE)
-    .style('fill', '#2ECC71')
+    .style('fill', POSITIVE_COLOR)
     .style('opacity', 1)
     .attr('stroke', 'white')
     .attr('stroke-width', BIG_STROKE)
@@ -1275,21 +1236,13 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     .attr('class', function(d) { return 'correlatedRect positiveRect_' + d.category; })
     .attr('x', 620 + BIG_STROKE / 2)
     .attr('y', function(d) {
-      // return d.y + BIG_STROKE / 2;
       return (countByPerson ? d.yByPerson : d.y) + BIG_STROKE / 2;
     })
     .attr('width', COL_WIDTH - BIG_STROKE)
-    .attr('height', function(d) {
-      return 0;
-      // return d.correlatedCount * boxHeight;
-    })
+    .attr('height', 0)
     .attr('rx', ROUNDED_EDGE)
-    .style('fill', '#2ECC71')
+    .style('fill', POSITIVE_COLOR)
     .style('opacity', 1)
-  //   .transition()
-  // .duration(2000)
-    // .attr('stroke', 'white')
-    // .attr('stroke-width', BIG_STROKE)
 
   // Positive Column Text
   positives
@@ -1301,7 +1254,6 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     .style('font-size', '16px')
     .attr('x', 745)
     .attr('y', function(d) {
-      // return d.y + 20;
       return (countByPerson ? d.yByPerson : d.y) + 20;
     })
     .style('font-weight', 600)
@@ -1324,7 +1276,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
       return (countByPerson ? d.id_list.length : d.count) * boxHeight;
     })
     .attr('rx', ROUNDED_EDGE)
-    .style('fill', '#2ECC71')
+    .style('fill', POSITIVE_COLOR)
     .style('opacity', 0.5)
     .attr('stroke', 'white')
     .attr('stroke-width', BIG_STROKE)
@@ -1333,22 +1285,19 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
   subPositives
     .append('text')
     .attr('class', 'subPositive')
-    .style('font-size', '16px')
+    .style('font-size', '12px')
     .attr('x', 880)
     .attr('y', function(d) {
-      // return d.yByPerson + 20;
-      return (countByPerson ? d.yByPerson : d.y) + 20;
+      return (countByPerson ? d.yByPerson : d.y) + 16;
     })
     .style('font-weight', 600)
     .attr('fill', '#17223b')
     .text(function(d) { 
-      return capitalize(d.subCategory) + ' ' + showCount(d.id_list.length);
+      return capitalize(d.subCategory) + ' ' + showCount(d.subCategory === 'Other' ? d.otherCount : d.id_list.length);
     })
     .style('text-anchor', 'start')
     .style('border', 'white')
     .call(wrap, 230)
-    // .append('tspan')
-    // .text(function(d) { return showCount(d.count); })
   
   // Positive Subcategory Border Lines
   subPositives
@@ -1364,7 +1313,8 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
 
     
 
-  // ANIMATION
+  // ---------------------------ANIMATION-----------------------------
+  // Hover onto a negative/positive rectangle - change opacity
   function rectHover(a, b) {
     if (!clicked && !filterClicked) { // only animate hover if no correlation requested
       d3.select(this)
@@ -1376,6 +1326,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     }
   }
 
+  // Hover off a negative/positive rectangle - change opacity
   function rectLeave(a, b) {
     if (!clicked && !filterClicked) { // only animate hover if no correlation requested
       d3.select(this)
@@ -1387,6 +1338,8 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     }
   }
 
+  // Clicking on a rectangle shows correlation in the other rectangles
+  // Hides subcategories
   function rectClick(a, b) {
     if (!filterClicked) {
       clicked = true;
@@ -1394,8 +1347,6 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
       d3.select(this)
         .attr('stroke', 'black')
         .attr('stroke-width', BIG_STROKE)
-        // .style('opacity', 1)
-        // .style('fill', '#F535AA')
       svg.select('#negativeColSub').transition()
         .duration(500)
         .style('opacity', 0)
@@ -1423,11 +1374,8 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
   function animateCorrelation(a, b) {
     if (!filterClicked) {
       var mainRects = d3.selectAll('.mainRect:not(.' + b.emotion + 'Rect_' + b.category + ')'),
-        corrRects = d3.selectAll('.correlatedRect'),
-        colText = d3.selectAll('.colText:not(#' + b.emotion + '_' + b.category + ')');
+        corrRects = d3.selectAll('.correlatedRect');
 
-      // toggleCorrelationMode();
-      // toggleCountTypeInSortedRects();
       getGroupCorrelated(b.emotion, b.category);
 
       mainRects.transition()
@@ -1437,10 +1385,6 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
       corrRects.transition()
         .duration(1500)
         .attr('height', function(d) {
-          // var toMultiply = countByPerson ? 
-          //   (d.correlatedCountByPerson / d.id_list.length) * d.count : 
-          //   d.correlatedCount;
-          // return toMultiply * boxHeight;
           return countByPerson ? 
             d.correlatedCountByPerson * boxHeightByPerson : 
             d.correlatedCount * boxHeightByInstance;
@@ -1450,12 +1394,13 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     }
   }
 
+  // Checks if a rectangle is the rectangle selected
   function thisRect(type, i, ctype, ci) {
     return type === ctype && i === ci;
   }
 
+  // Calculates the correlated instances or person counts
   function getGroupCorrelated(selected_emotion, selected_category) {
-    // if sortedRects['negative'][0]
     // Initialize correlatedCount for each sortedRect
     for (var type of ['negative', 'positive']) {
       for (var i = 0; i < 5; i++) {
@@ -1490,277 +1435,260 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     }
   }
 
-  // CLICKING OFF THE WHEEL
-d3.select('body').on('click', function(e) {
-  returnToInitialVisualState(e);
-});
-
-function returnToInitialVisualState(e) {
-  if (e && e.target) {
-    triggersEvent = Array.from(e.target.classList).some(function(toCheck) {
-        return ['mainRect', 'subRect', 'checkbox', 'correlatedRect'].includes(toCheck);
-    });
-  } else {
-    triggersEvent = false;
-  }
-  if (!triggersEvent) { // reset visuals (rects are at full height and opacity)
-    clicked = false;
-    var mainRects = d3.selectAll('.mainRect'),
-    corrRects = d3.selectAll('.correlatedRect'),
-    colText = d3.selectAll('.colText');
-
-    if (rectClicked) {
-      d3.select(rectClicked)
-        .attr('stroke', 'white')
-        .attr('stroke-width', BIG_STROKE)
-      d3.select('#' + rectClicked.__data__.emotion + '_' + rectClicked.__data__.category)
-        .attr('fill', 'white')
+  // When clicking off of the diagram, return to initial visual state
+  function returnToInitialVisualState(e) {
+    if (e && e.target) {
+      triggersEvent = Array.from(e.target.classList).some(function(toCheck) {
+          return ['mainRect', 'subRect', 'checkbox', 'correlatedRect'].includes(toCheck);
+      });
+    } else {
+      triggersEvent = false;
+    }
+    if (!triggersEvent) { // reset visuals (rects are at full height and opacity)
+      var mainRects = d3.selectAll('.mainRect'),
+      corrRects = d3.selectAll('.correlatedRect');
       
-      sortedRects[rectClicked.__data__.emotion].find(function(searched) { 
-        return searched.category === rectClicked.__data__.category; 
-      }).clickedRect = false; // clicked rect in sortedRects no longer marked
+      clicked = false;
+      if (rectClicked) {
+        d3.select(rectClicked)
+          .attr('stroke', 'white')
+          .attr('stroke-width', BIG_STROKE)
+        d3.select('#' + rectClicked.__data__.emotion + '_' + rectClicked.__data__.category)
+          .attr('fill', 'white')
+        
+        sortedRects[rectClicked.__data__.emotion].find(function(searched) { 
+          return searched.category === rectClicked.__data__.category; 
+        }).clickedRect = false; // clicked rect in sortedRects no longer marked
 
-      rectClicked = undefined;
-    }
-    svg.select('#negativeColSub')
-      .style('opacity', 1)
-    svg.select('#positiveColSub')
-      .style('opacity', 1)
-    subNegatives
-      .style('opacity', 1)
-    subNegativeRectangles
-      .style('opacity', 1)
-    subPositives
-      .style('opacity', 1)
-    subPositiveRectangles
-      .style('opacity', 1)
-
-    mainRects
-      .style('opacity', 1)
-
-    corrRects
-      .attr('height', function(d) {
-        return 0;
-      })
-
-    toggleCountDisplay();
-  }
-};
-
-function change(region) {
-  var selectedCheckbox = region.target.__data__,
-    toSwitch = [],
-    categoryToSwitch,
-    countByToggled = false;
-
-  switch(selectedCheckbox) {
-    case 'Asian':
-      categoryToSwitch = 'byEthnicity';
-      break;
-    case 'Count by Person':
-      countByToggled = true;
-      countByPerson = !countByPerson;
-      // toggleCountTypeInSortedRects();
-      toggleSubCategoryAnimation();
-      break;
-    case 'Income Under $80K':
-      categoryToSwitch = 'byIncome';
-      break;
-    case 'Care Receiver Under 30':
-      categoryToSwitch = 'byCareReceiverAge';
-      break;
-  }
-  toSwitch.push(categoryToSwitch);
-
-  if (!countByToggled) {
-    for (var i of toSwitch) {
-      filters[i] = !filters[i];
-    }
-  }
-
-  filterEachRect();
-  countByToggled && toggleCountByDisplay();
-  toggleCountDisplay();
-  toggleSubCategoriesDisplay();
-  !countByToggled && toggleBinaryAnimation(filters[categoryToSwitch]);
-}
-
-function allFiltersTrueForPerson(person) {
-  var countMapper = {
-      byEthnicity: 'asian',
-      byIncome: 'income_under_80',
-      byCareReceiverAge: 'receiver_under_30'
-    },
-    filtersToCheck = [];
-  for (filter of Object.keys(filters)) {
-    filters[filter] && filtersToCheck.push(filter);
-  }
-  for (filter of filtersToCheck) {
-    if (!person[countMapper[filter]]) { // person not characterized by this filter, no person should not be counted
-      return false;
-    }
-  }
-  return true; // all filters apply to this person, so count this person
-}
-
-function noFiltersOn() {
-  for (filter of Object.keys(filters)) {
-    if (filters[filter]) {
-      return false;
-    }
-  }
-  return true;
-}
-
-function filterEachRect() {
-  for (var type of ['negative', 'positive']) {
-    for (rect of sortedRects[type]) {
-      var tempCount = 0;
-      if (noFiltersOn()) {
-        tempCount = countByPerson ? rect.id_list.length : rect.count;
-      } else {
-        for (person of rect.id_list) {
-          var rectPerson = correlation[person];
-          if (countByPerson) {
-            if (allFiltersTrueForPerson(rectPerson)) {
-              tempCount++;
-            }
-          } else {
-            if (allFiltersTrueForPerson(rectPerson)) {
-              tempCount += rectPerson[type][rect.category];
-            }
-          }
-        }
+        rectClicked = undefined;
       }
-      rect.tempCount = tempCount;
+      svg.select('#negativeColSub')
+        .style('opacity', 1)
+      svg.select('#positiveColSub')
+        .style('opacity', 1)
+      subNegatives
+        .style('opacity', 1)
+      subNegativeRectangles
+        .style('opacity', 1)
+      subPositives
+        .style('opacity', 1)
+      subPositiveRectangles
+        .style('opacity', 1)
+      mainRects
+        .style('opacity', 1)
+      corrRects
+        .attr('height', 0)
+
+      toggleCountDisplay();
     }
+  };
+
+  // Filters
+  function change(region) {
+    var selectedCheckbox = region.target.__data__,
+      toSwitch = [],
+      categoryToSwitch,
+      countByToggled = false;
+
+    switch(selectedCheckbox) {
+      case 'Asian':
+        categoryToSwitch = 'byEthnicity';
+        break;
+      case 'Count by Person':
+        countByToggled = true;
+        countByPerson = !countByPerson;
+        toggleSubCategoryAnimation();
+        break;
+      case 'Income Under $80K':
+        categoryToSwitch = 'byIncome';
+        break;
+      case 'Care Receiver Under 30':
+        categoryToSwitch = 'byCareReceiverAge';
+        break;
+    }
+    toSwitch.push(categoryToSwitch);
+
+    if (!countByToggled) {
+      for (var i of toSwitch) {
+        filters[i] = !filters[i];
+      }
+    }
+
+    filterEachRect();
+    countByToggled && toggleCountByDisplay();
+    toggleCountDisplay();
+    toggleSubCategoriesDisplay();
+    !countByToggled && toggleBinaryAnimation();
   }
 
-}
-
-// Updates the rectangle heights based on count by status
-function toggleCountByDisplay() {
-  var mainAndSubRects = d3.selectAll('.mainRect, .subRect'),
-    correlatedRects = d3.selectAll('.correlatedRect'),
-    colTexts = d3.selectAll('.colText'),
-    subRects = d3.selectAll('.subRect');
-
-  mainAndSubRects.transition()
-    .duration(500)
-    .attr('height', function(d) {
-      return countByPerson ? 
-        d.id_list.length * boxHeightByPerson : 
-        d.count * boxHeightByInstance;
-    })
-    .attr('y', function(d) {
-      return countByPerson ? d.yByPerson : d.y;
-    })
-
-  correlatedRects.transition()
-    .duration(500)
-    .attr('height', function(d) {
-      return (countByPerson ? 
-        d.id_list.length * boxHeightByPerson : 
-        d.count * boxHeightByInstance)
-        - BIG_STROKE;
-    })
-    .attr('y', function(d) {
-      return (countByPerson ? d.yByPerson : d.y) + BIG_STROKE/2;
-    })
-
-  colTexts.transition()
-    .duration(500)
-    .attr('y', function(d) {
-      return (countByPerson ? d.yByPerson : d.y) + 20;
-    })
-
-  // subRects.transition()
-  //   .duration(1000)
-
-}
-
-function anyFilterClicked() {
-  for (filterVal of Object.values(filters)) {
-    if (filterVal) {
-      filterClicked = true;
-      return true;
+  // Count a person if they fulfill all selected filters
+  function allFiltersTrueForPerson(person) {
+    var countMapper = {
+        byEthnicity: 'asian',
+        byIncome: 'income_under_80',
+        byCareReceiverAge: 'receiver_under_30'
+      },
+      filtersToCheck = [];
+    for (filter of Object.keys(filters)) {
+      filters[filter] && filtersToCheck.push(filter);
     }
+    for (filter of filtersToCheck) {
+      if (!person[countMapper[filter]]) { // person not characterized by this filter, no person should not be counted
+        return false;
+      }
+    }
+    return true;
   }
-  filterClicked = false;
-  return false;
-}
 
-// param true if you want to show by person
-function toggleCountDisplay() {
-  var colText = d3.selectAll('.colText'),
-    subText = d3.selectAll('.subNegative, .subPositive');
+  // Returns true if no filters selected
+  function noFiltersOn() {
+    for (filter of Object.keys(filters)) {
+      if (filters[filter]) {
+        return false;
+      }
+    }
+    return true;
+  }
 
-  anyFilterClicked();
-
-  const myTimeout = setTimeout(function() {
-    colText
-      .text(function(d) {
-        var numerator = d.tempCount === undefined ? d.id_list.length : d.tempCount // tempCount = undefined at start, so set to person count for initial click-off
-          denominator = countByPerson ? d.id_list.length : d.count,
-          displayContent = capitalize(d.category + ' (' + numerator + ')');
-        // if (d.displayFractionMode) {
-        if (rectClicked) {
-          if (rectClicked.__data__ == d) {
-            displayContent = capitalize(d.category);
-          } else {
-            displayContent = capitalize(d.category + ' (' + (countByPerson ? correlatedCountByPerson : correlatedCount) + ')');
+  // Calculate counts shown in each rectangle given filters selected
+  function filterEachRect() {
+    for (var type of ['negative', 'positive']) {
+      for (rect of sortedRects[type]) {
+        var tempCount = 0;
+        if (noFiltersOn()) {
+          tempCount = countByPerson ? rect.id_list.length : rect.count;
+        } else {
+          for (person of rect.id_list) {
+            var rectPerson = correlation[person];
+            if (countByPerson) {
+              if (allFiltersTrueForPerson(rectPerson)) {
+                tempCount++;
+              }
+            } else {
+              if (allFiltersTrueForPerson(rectPerson)) {
+                tempCount += rectPerson[type][rect.category];
+              }
+            }
           }
-        } else if (filterClicked) {
-          displayContent = capitalize(d.category + ' (' + numerator + '/' + denominator + '): ') + Math.round(numerator / denominator * 100) + '%';
         }
-        return displayContent;
-      })
-  }, 150);
+        rect.tempCount = tempCount;
+      }
+    }
+  }
 
-  const myTimeout2 = setTimeout(function() {
-    subText
-      .text(function(d) {
-          var toDisplay = countByPerson ? d.id_list.length : d.count,  // TODO: change to tempCount!
-          displayContent = capitalize(d.subCategory + ' (' + toDisplay + ')');
-        return displayContent;
+  // Updates the rectangle heights based on count by status
+  function toggleCountByDisplay() {
+    var mainAndSubRects = d3.selectAll('.mainRect, .subRect'),
+      correlatedRects = d3.selectAll('.correlatedRect'),
+      colTexts = d3.selectAll('.colText');
+
+    mainAndSubRects.transition()
+      .duration(500)
+      .attr('height', function(d) {
+        return countByPerson ? 
+          d.id_list.length * boxHeightByPerson : 
+          d.count * boxHeightByInstance;
       })
-      .call(wrap, 230)
-  }, 150);
-}
+      .attr('y', function(d) {
+        return countByPerson ? d.yByPerson : d.y;
+      })
+
+    correlatedRects.transition()
+      .duration(500)
+      .attr('height', function(d) {
+        return (countByPerson ? 
+          d.id_list.length * boxHeightByPerson : 
+          d.count * boxHeightByInstance)
+          - BIG_STROKE;
+      })
+      .attr('y', function(d) {
+        return (countByPerson ? d.yByPerson : d.y) + BIG_STROKE/2;
+      })
+
+    colTexts.transition()
+      .duration(500)
+      .attr('y', function(d) {
+        return (countByPerson ? d.yByPerson : d.y) + 20;
+      })
+  }
+
+  // Sets filterClicked if any filter is on
+  function anyFilterClicked() {
+    for (filterVal of Object.values(filters)) {
+      if (filterVal) {
+        filterClicked = true;
+        return;
+      }
+    }
+    filterClicked = false;
+  }
+
+  // Rectangle text displays based on mode (correlation/filters)
+  function toggleCountDisplay() {
+    var colText = d3.selectAll('.colText'),
+      subText = d3.selectAll('.subNegative, .subPositive');
+
+    anyFilterClicked();
+
+    const myTimeout = setTimeout(function() {
+      colText
+        .text(function(d) {
+          var numerator = d.tempCount === undefined ? d.id_list.length : d.tempCount // tempCount = undefined at start, so set to person count for initial click-off
+            denominator = countByPerson ? d.id_list.length : d.count,
+            displayContent = capitalize(d.category + ' (' + numerator + ')');
+          if (rectClicked) {
+            if (rectClicked.__data__ == d) {
+              displayContent = capitalize(d.category); // clicked rectangle just shows category name
+            } else {
+              displayContent = capitalize(d.category + ' (' + (countByPerson ? d.correlatedCountByPerson : d.correlatedCount) + ')'); // other rectangles in correlation mode show count
+            }
+          } else if (filterClicked) {
+            displayContent = capitalize(d.category + ' (' + numerator + '/' + denominator + '): ') + Math.round(numerator / denominator * 100) + '%'; // filter mode shows percentages
+          }
+          return displayContent;
+        })
+    }, 150);
+
+    const myTimeout2 = setTimeout(function() {
+      subText
+        .text(function(d) {
+            var toDisplay = countByPerson ? (d.otherCount || d.id_list.length) : d.count,  // TODO: change to tempCount!
+            displayContent = capitalize(d.subCategory + ' (' + toDisplay + ')');
+          return displayContent;
+        })
+        .call(wrap, 230)
+    }, 150);
+  }
 
   // Show animation for simple binary
-  function toggleBinaryAnimation(turnOn) {
+  function toggleBinaryAnimation() {
     var mainRects = d3.selectAll('.mainRect'),
-      corrRects = d3.selectAll('.correlatedRect')
+      corrRects = d3.selectAll('.correlatedRect');
 
     mainRects.transition()
       .duration(500)
       .style('opacity', 0.2)
 
-    // if (turnOn) {
-      corrRects.transition()
-        .duration(1000)
-        .attr('height', function(d) {
-          // var toMultiply = countByPerson ? 
-          //   (d.tempCount / d.id_list.length) * d.count : 
-          //   d.tempCount;
-          // return toMultiply * boxHeight;
-          return d.tempCount * (countByPerson ? boxHeightByPerson : boxHeightByInstance) - BIG_STROKE;
-        })
-    // } else {
-    //   corrRects.transition()
-    //     .duration(1000)
-    //     .attr('height', 0)
-    // }
+    corrRects.transition()
+      .duration(1000)
+      .attr('height', function(d) {
+        return d.tempCount * (countByPerson ? boxHeightByPerson : boxHeightByInstance) - BIG_STROKE;
+      })
   }
 
-  // Show animation for simple binary
+  // Show animation for switching between count by instance and count by person
   function toggleSubCategoryAnimation() {
     var lines = d3.selectAll('.subNegativeLine, .subPositiveLine'),
       text = d3.selectAll('.subNegative, .subPositive');
 
     text
       .style('opacity', 0)
+      .attr('y', function(d) {
+        return (countByPerson ? d.yByPerson : d.y) + 16;
+      })
+      .transition()
+      .delay(200)
+      .style('opacity', 1)
 
     lines
       .attr('y1', function(d) {
@@ -1769,27 +1697,22 @@ function toggleCountDisplay() {
       .attr('y2', function(d) {
         return countByPerson ? d.yByPerson : d.y;
       })
+    }
 
-    text
-      .attr('y', function(d) {
-        return (countByPerson ? d.yByPerson : d.y) + 20;
+  // Show or obscure subcategories
+  function toggleSubCategoriesDisplay() {
+    var subcats = d3.selectAll('#negativeColSub, #positiveColSub');
+
+    subcats.transition()
+      .duration(500)
+      .style('opacity', function(d) {
+        return filterClicked ? 0.2 : 1;
       })
+  }
 
-    text.transition()
-      .delay(200)
-      .style('opacity', 1)
-    }
+  // CLICKING OFF THE DIAGRAM
+  d3.select('body').on('click', function(e) {
+    returnToInitialVisualState(e);
+  });
 
-    function toggleSubCategoriesDisplay() {
-      var subcats = d3.selectAll('#negativeColSub, #positiveColSub');
-
-      subcats.transition()
-        .duration(500)
-        .style('opacity', function(d) {
-          return filterClicked ? 0.2 : 1;
-        })
-    }
-
-    // ---------------------------------------------------------------------------END COCOBOT
-      
 }) // END of d3.csv.then()
