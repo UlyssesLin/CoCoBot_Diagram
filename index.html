@@ -16,8 +16,38 @@
   <body>
     <div class="container-fluid">
       <h1>CoCoBot</h1>
-        <form id="diagram_inputs"></form>
-        <!-- <div id="dropdown_container"></div> -->
+      <br>
+      <p>Click on a checked Race/Income/Care Receiver Age radio button to uncheck it.</p>
+        <form id="diagram_inputs">
+          <div class="radio-block">
+            <p>Display Mode</p>
+            <input type="radio" class="radio" id="radio_count_by_person" name="mode" value="Count by Person" checked=true>
+            <label for="radio_count_by_person">Count By Person</label><br>
+            <input type="radio" class="radio" id="radio_count_by_instance" name="mode" value="Count by Instance">
+            <label for="radio_count_by_instance">Count By Instance</label><br>  
+          </div>
+          <div class="radio-block">
+            <p>Race</p>
+            <input type="radio" class="radio filter" id="radio_asian" name="byEthnicity" value="Asian">
+            <label for="radio_asian">Asian</label><br>
+            <input type="radio" class="radio filter" id="radio_non_asian" name="byEthnicity" value="Non-Asian">
+            <label for="radio_non_asian-Asian">Non-Asian</label><br>
+          </div>
+          <div class="radio-block">
+            <p>Income</p>
+            <input type="radio" class="radio filter" id="radio_income_under_80k" name="byIncome" value="Income Under $80K">
+            <label for="radio_income_under_80k">Under $80K</label><br>
+            <input type="radio" class="radio filter" id="radio_income_80k_plus" name="byIncome" value="Income $80K+">
+            <label for="radio_income_80k_plus">$80K+</label><br>
+          </div>
+          <div class="radio-block">
+            <p>Care Receiver Age</p>
+            <input type="radio" class="radio filter" id="radio_care_receiver_under_30" name="byCareReceiverAge" value="Care Receiver Under 30">
+            <label for="radio_care_receiver_under_30">Under 30</label><br>
+            <input type="radio" class="radio filter" id="radio_care_receiver_30_plus" name="byCareReceiverAge" value="Care Receiver 30+">
+            <label for="radio_care_receiver_30_plus">30+</label><br>
+          </div>
+        </form>
         <div class="col-xxl-7 shared-row map_wrapper">
           <svg id="diagram" width="1600" height="2000"></svg>
           <svg id="heatmap" width="2400" height="4000"></svg>

@@ -8,10 +8,13 @@ For more information on usage, please read the README file
 
 var svg = d3.select("#diagram"),
   heatmap = d3.select('#heatmap'),
-  clicked = false,
+  userChecksRadio = [],
+  clicked = false, // happens after clicking a rectangle but before toggleDisabled; only true if already in correlation mode (a rect was previously clicked and you click on another)
+  rectClicked, // happens after clicking a rectangle
   countByPerson = true,
-  rectClicked,
   filterClicked = false,
+  groupChosen = {},
+  getOpposite = {},
   emotions = ['ambiguous', 'negative', 'positive'],
   subNegativeRects = [],
   subPositiveRects = [],
@@ -258,25 +261,32 @@ function wrap(text, width) {
 d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_data_old.csv').then(function(data) {
 // d3.csv('/all_data_old.csv').then(function(data) {
   var topY = INIT_Y,
-    topYByPerson = INIT_Y,
-    labels; // for the filters at top
+    topYByPerson = INIT_Y;
+    // labels; // for the filters at top
 
-  labels = d3.select('#diagram_inputs')
-    .selectAll()
-    .data(['Asian', 'Count by Person', 'Income Under $80K', 'Care Receiver Under 30'])
-    .enter()
-    .append('label');
+  // labels = d3.select('#diagram_inputs')
+  //   .selectAll()
+  //   .data(['Asian', 'Count by Person', 'Income Under $80K', 'Care Receiver Under 30'])
+  //   .enter()
+  //   .append('label');
 
-  labels.append('input')
-    .attr('type', 'checkbox')
-    .attr('class', function(d) { return 'checkbox ' + d.toLowerCase().split(' ').join('_'); })
-    .property('checked', function(d) { return d === 'Count by Person'; })
-    .attr('name', function(d) { return d; })
-    .attr('value', function(d) { return d.toLowerCase(); })
-    .on('change', change)
+  // labels.append('input')
+  //   .attr('type', 'radio')
+  //   .attr('class', function(d) { return 'checkbox ' + d.toLowerCase().split(' ').join('_'); })
+  //   .property('checked', function(d) { return d === 'Count by Person'; })
+  //   .attr('name', function(d) { return d; })
+  //   .attr('value', function(d) { return d.toLowerCase(); })
+  //   .on('change', change)
+
+  d3.selectAll('#diagram_inputs input')
+  .on('mousedown', handleInputChange)
   
-  labels.append('span')
-    .text(function(d) { return d; })
+  d3.selectAll('#diagram_inputs .filter')
+  .on('click', handleClick)
+  // d3.selectAll('#diagram_inputs ')
+  
+  // labels.append('span')
+  //   .text(function(d) { return d; })
 
   // Parse the raw data
   // Sift out Ambiguous, group items by emotion
@@ -593,6 +603,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
 
     // By person count, not instance
     function getEmotionPercents() {
+      var nons = 0;
       for (var emotion of ['negative', 'positive']) {
         for (var categoryRect of sortedRects[emotion]) {
           if (!categoryRect.heatmapCounts) {
@@ -614,6 +625,12 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
           }
           for (var id of categoryRect.id_list) {
             var p = correlation[id];
+            if (!['fullTime', 'partTime', 'otherTime'].includes(p.employment)) {
+              // console.log(p);
+              nons++;
+            } else {
+              // console.log(p);
+            }
             categoryRect.heatmapCounts[p.employment]++;
             totalHeatmapCounts[emotion][p.employment]++;
             for (var cat of ['asian', 'income_under_80', 'receiver_under_30']) {
@@ -644,7 +661,6 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
               }
             }
           }
-    
         }
         for (var categoryRect of sortedRects[emotion]) {
           for (var cat of ['fullTime', 'partTime', 'otherTime', 'asian', 'income_under_80', 'receiver_under_30', 'non_asian', 'non_income_under_80', 'non_receiver_under_30', 'asianANDincome_under_80', 'asianANDnon_income_under_80', 'non_asianANDincome_under_80', 'non_asianANDnon_income_under_80']) {
@@ -653,6 +669,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
           }
         }
       }
+      // console.log('nons: ', nons);
     }
   
     var emotionLabelY = 200;
@@ -1342,8 +1359,9 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
   // Hides subcategories
   function rectClick(a, b) {
     if (!filterClicked) {
-      clicked = true;
       rectClicked = this;
+      svg.selectAll('.mainRect')
+        .attr('stroke', 'white')
       d3.select(this)
         .attr('stroke', 'black')
         .attr('stroke-width', BIG_STROKE)
@@ -1368,14 +1386,26 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     }
   }
   
-
+  function toggleDisabled() {
+    if (!clicked && rectClicked) {
+      for (var name of ['mode', 'byEthnicity', 'byIncome', 'byCareReceiverAge']) {
+        var group = document.getElementsByName(name);
+    
+        for (var j = 0; j < group.length; j++) {
+          group[j].disabled = !group[j].disabled;
+        }
+      }
+    }
+  }
 
   // SHOW CORRELATION ANIMATION
   function animateCorrelation(a, b) {
     if (!filterClicked) {
       var mainRects = d3.selectAll('.mainRect:not(.' + b.emotion + 'Rect_' + b.category + ')'),
-        corrRects = d3.selectAll('.correlatedRect');
-
+      corrRects = d3.selectAll('.correlatedRect');
+      
+      toggleDisabled();
+      clicked = true;
       getGroupCorrelated(b.emotion, b.category);
 
       mainRects.transition()
@@ -1435,20 +1465,46 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     }
   }
 
+  // Uncheck all filters
+  function uncheckAllFilters() {
+    for (var name of ['byEthnicity', 'byIncome', 'byCareReceiverAge']) {
+      var group = document.getElementsByName(name);
+  
+      for (var j = 0; j < group.length; j++) {
+        if (group[j].checked) {
+          group[j].checked = false;
+        }
+      }
+    }
+
+    filters = {
+      byEthnicity: false,
+      byIncome: false,
+      byCareReceiverAge: false
+    };
+
+    groupChosen = {};
+    getOpposite = {};
+    filterClicked = false;
+  }
+
   // When clicking off of the diagram, return to initial visual state
   function returnToInitialVisualState(e) {
     if (e && e.target) {
       triggersEvent = Array.from(e.target.classList).some(function(toCheck) {
-          return ['mainRect', 'subRect', 'checkbox', 'correlatedRect'].includes(toCheck);
+          return ['mainRect', 'subRect', 'radio', 'correlatedRect'].includes(toCheck);
       });
     } else {
       triggersEvent = false;
     }
     if (!triggersEvent) { // reset visuals (rects are at full height and opacity)
       var mainRects = d3.selectAll('.mainRect'),
-      corrRects = d3.selectAll('.correlatedRect');
-      
+        corrRects = d3.selectAll('.correlatedRect');
+
+      uncheckAllFilters();
       clicked = false;
+      toggleDisabled();
+      
       if (rectClicked) {
         d3.select(rectClicked)
           .attr('stroke', 'white')
@@ -1478,43 +1534,78 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
         .style('opacity', 1)
       corrRects
         .attr('height', 0)
+      svg.selectAll('.mainRect')
+        .attr('stroke', 'white')
 
       toggleCountDisplay();
     }
   };
 
+  // Unchecks radio button if user clicks on a checked radio button
+  function handleClick(event) {
+    userChecksRadio[event.target.id] = !userChecksRadio[event.target.id];
+    if (userChecksRadio[event.target.id]) {
+      event.target.checked = false;
+    }
+  }
+
   // Filters
-  function change(region) {
-    var selectedCheckbox = region.target.__data__,
-      toSwitch = [],
-      categoryToSwitch,
-      countByToggled = false;
+  function handleInputChange(event) {
+    var selectedCheckbox = event.target.value,
+    toSwitch = [],
+    categoryToSwitch,
+    countByToggled = false;
+    
+    userChecksRadio[event.target.id] = !event.target.checked; // toggle checked value of radio button
+    groupChosen[event.target.name] = !event.target.checked; // say that a filter radio group has been chosen
 
     switch(selectedCheckbox) {
       case 'Asian':
         categoryToSwitch = 'byEthnicity';
+        getOpposite['byEthnicity'] = false;
+        break;
+      case 'Non-Asian':
+        categoryToSwitch = 'byEthnicity';
+        getOpposite['byEthnicity'] = true;
         break;
       case 'Count by Person':
         countByToggled = true;
-        countByPerson = !countByPerson;
+        countByPerson = true;
+        toggleSubCategoryAnimation();
+        break;
+      case 'Count by Instance':
+        countByToggled = true;
+        countByPerson = false;
         toggleSubCategoryAnimation();
         break;
       case 'Income Under $80K':
         categoryToSwitch = 'byIncome';
+        getOpposite['byIncome'] = false;
+        break;
+      case 'Income $80K+':
+        categoryToSwitch = 'byIncome';
+        getOpposite['byIncome'] = true;
         break;
       case 'Care Receiver Under 30':
         categoryToSwitch = 'byCareReceiverAge';
+        getOpposite['byCareReceiverAge'] = false;
+        break;
+      case 'Care Receiver 30+':
+        categoryToSwitch = 'byCareReceiverAge';
+        getOpposite['byCareReceiverAge'] = true;
         break;
     }
     toSwitch.push(categoryToSwitch);
 
     if (!countByToggled) {
-      for (var i of toSwitch) {
-        filters[i] = !filters[i];
+      var names = ['byEthnicity', 'byIncome', 'byCareReceiverAge'];
+
+      for (var name of names) {
+        filters[name] = !!groupChosen[name];
       }
     }
 
-    filterEachRect();
+    filterEachRect(getOpposite);
     countByToggled && toggleCountByDisplay();
     toggleCountDisplay();
     toggleSubCategoriesDisplay();
@@ -1522,7 +1613,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
   }
 
   // Count a person if they fulfill all selected filters
-  function allFiltersTrueForPerson(person) {
+  function allFiltersTrueForPerson(person, getOpposite) {
     var countMapper = {
         byEthnicity: 'asian',
         byIncome: 'income_under_80',
@@ -1533,7 +1624,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
       filters[filter] && filtersToCheck.push(filter);
     }
     for (filter of filtersToCheck) {
-      if (!person[countMapper[filter]]) { // person not characterized by this filter, no person should not be counted
+      if (getOpposite[filter] ? person[countMapper[filter]] : !person[countMapper[filter]]) { // person not characterized by this filter, no person should not be counted
         return false;
       }
     }
@@ -1551,7 +1642,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
   }
 
   // Calculate counts shown in each rectangle given filters selected
-  function filterEachRect() {
+  function filterEachRect(getOpposite) {
     for (var type of ['negative', 'positive']) {
       for (rect of sortedRects[type]) {
         var tempCount = 0;
@@ -1561,11 +1652,11 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
           for (person of rect.id_list) {
             var rectPerson = correlation[person];
             if (countByPerson) {
-              if (allFiltersTrueForPerson(rectPerson)) {
+              if (allFiltersTrueForPerson(rectPerson, getOpposite)) {
                 tempCount++;
               }
             } else {
-              if (allFiltersTrueForPerson(rectPerson)) {
+              if (allFiltersTrueForPerson(rectPerson, getOpposite)) {
                 tempCount += rectPerson[type][rect.category];
               }
             }
@@ -1596,6 +1687,9 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     correlatedRects.transition()
       .duration(500)
       .attr('height', function(d) {
+        if (filterClicked) {
+          return d.tempCount * (countByPerson ? boxHeightByPerson : boxHeightByInstance);
+        }
         return (countByPerson ? 
           d.id_list.length * boxHeightByPerson : 
           d.count * boxHeightByInstance)
@@ -1638,12 +1732,14 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
             displayContent = capitalize(d.category + ' (' + numerator + ')');
           if (rectClicked) {
             if (rectClicked.__data__ == d) {
-              displayContent = capitalize(d.category); // clicked rectangle just shows category name
+              displayContent = capitalize(d.category); // clicked rectangle just shows category name (ex: 'Love and belonging')
             } else {
-              displayContent = capitalize(d.category + ' (' + (countByPerson ? d.correlatedCountByPerson : d.correlatedCount) + ')'); // other rectangles in correlation mode show count
+              displayContent = capitalize(d.category + ' (' + (countByPerson ? d.correlatedCountByPerson : d.correlatedCount) + ')'); // other rectangles in correlation mode show count (ex: 'Safety (51)')
             }
           } else if (filterClicked) {
-            displayContent = capitalize(d.category + ' (' + numerator + '/' + denominator + '): ') + Math.round(numerator / denominator * 100) + '%'; // filter mode shows percentages
+            displayContent = capitalize(d.category + ' (' + numerator + '/' + denominator + '): ') + Math.round(numerator / denominator * 100) + '%'; // filter mode shows percentages (ex: 'Esteem (12/58): 21%')
+          } else { // return to initial state (ex: 'Love and belonging (79)')
+            displayContent = capitalize(d.category + ' (' + denominator + ')');
           }
           return displayContent;
         })

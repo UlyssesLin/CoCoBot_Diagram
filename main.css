@@ -4,18 +4,36 @@ body {
     padding: 24px;
 }
 
-#diagram_inputs label {
-  padding-right: 24px;
+#diagram_inputs {
+  width: 100%;
+  margin-left: 20px;
 }
 
-#diagram_inputs input {
-  transform: scale(2);
+#diagram_inputs label {
+  padding: 12px 24px 24px;
+}
+
+#diagram_inputs p {
+  text-align: center;
+  font-weight: bold;
+}
+
+#diagram_inputs input[type=radio] {
+  transform: scale(4);
+  margin-left: 20px;
   margin-right: 8px;
 }
 
 #diagram_inputs span {
   margin-left: 4px;
   font-size: 16px;
+}
+
+#diagram_inputs .radio-block {
+  width: auto;
+  display: inline-table;
+  vertical-align: top;
+  margin-right: 12px;
 }
 
 #diagram {
