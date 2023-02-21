@@ -6,8 +6,32 @@ This code is authorized for use by members of the CoCoBot project
 For more information on usage, please read the README file
 */
 
-var svg = d3.select("#diagram"),
+var USE_GITHUB_DATA = true, // SET THIS TO FALSE TO USE LOCAL .CSV FILE DATA INSTEAD OF GITHUB HOSTED .CSV FILE DATA
+  GITHUB_EMOTIONS = 'https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_data_old.csv', // Emotion reports data file
+  LOCAL_EMOTIONS = '/all_data_old.csv', // Emotion reports data file
+  GITHUB_DEMOGRAPHICS = 'https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/coco-demographics.csv', // Demographics data file
+  LOCAL_DEMOGRAPHICS = '/coco-demographics.csv', // Demographics data file
+  FULL_OTHER_TIME = true, // SET TO FALSE TO HAVE FULL TIME/PART TIME/OTHER (instead of full/other only)
+  NEGATIVE_COLOR = '#5bd1d7', // color for Negative rectangles and heatmap text (originally teal)
+  POSITIVE_COLOR = '#2ECC71', // color for Positive rectangles and heatmap text (originally green)
+  COL_WIDTH = 250,
+  INIT_Y = 100,
+  BOTTOM_MARGIN = 100,
+  LABEL_Y = 50,
+  ROUNDED_EDGE = 8,
+  BIG_STROKE = 8,
+  SVG_HEIGHT = 2000,
+  HEATMAP_BOX_HEIGHT = 100,
+  HEATMAP_BOX_WIDTH = 100,
+  INCOME_THRESHHOLD = 80000,
+  HEATMAP_BUCKET_1_MAX = 10,
+  HEATMAP_BUCKET_2_MAX = 20,
+  SECOND_HEATMAP_OFFSET = 1400,
+  OTHER_THRESHOLD = 28, // You can play with this pixel high threshold; the lower the #, the lower the max-height for a subcategory's text (i.e., you'll probably see Other split into more categories, but the text may be squished vertically)
+  TOP_COUNT = 5, // # of top categories to display
+  svg = d3.select("#diagram"),
   heatmap = d3.select('#heatmap'),
+  demoIds = [], // list of ids that have demographic data
   userChecksRadio = [],
   clicked = false, // happens after clicking a rectangle but before toggleDisabled; only true if already in correlation mode (a rect was previously clicked and you click on another)
   rectClicked, // happens after clicking a rectangle
@@ -81,6 +105,21 @@ var svg = d3.select("#diagram"),
 
     'role conflict': 'self-actualization'
   },
+  heatmapColLabelMapper = {
+    'fullTime': { text: 'Full Time', neg_n: 0, pos_n: 0 },
+    'partTime': { text: 'Part Time', neg_n: 0, pos_n: 0 },
+    'otherTime': { text: 'Other', neg_n: 0, pos_n: 0 },
+    'asian': { text: 'Asian', neg_n: 0, pos_n: 0 },
+    'non_asian': { text: 'Non-Asian', neg_n: 0, pos_n: 0 },
+    'income_under_80': { text: 'Less Than $80k', neg_n: 0, pos_n: 0 },
+    'non_income_under_80': { text: '$80k and Up', neg_n: 0, pos_n: 0 },
+    'receiver_under_21': { text: 'Less Than 21', neg_n: 0, pos_n: 0 },
+    'non_receiver_under_21': { text: '21 and Up', neg_n: 0, pos_n: 0 },
+    'asianANDincome_under_80': { text: 'Asian Earning <$80k', neg_n: 0, pos_n: 0 },
+    'asianANDnon_income_under_80': { text: 'Asian Earning $80k+', neg_n: 0, pos_n: 0 },
+    'non_asianANDincome_under_80': { text: 'Non-Asian Earning <$80k', neg_n: 0, pos_n: 0 },
+    'non_asianANDnon_income_under_80': { text: 'Non-Asian Earning $80k+', neg_n: 0, pos_n: 0 }
+  },
   emotionList = {
     ambiguous: [],
     negative: [],
@@ -141,24 +180,7 @@ var svg = d3.select("#diagram"),
     'working half-time': 'partTime',
     'working part time': 'partTime',
     'working part-time': 'partTime'
-  },
-  NEGATIVE_COLOR = '#5bd1d7', // color for Negative rectangles and heatmap text (originally teal)
-  POSITIVE_COLOR = '#2ECC71', // color for Positive rectangles and heatmap text (originally green)
-  COL_WIDTH = 250,
-  INIT_Y = 100,
-  BOTTOM_MARGIN = 100,
-  LABEL_Y = 50,
-  ROUNDED_EDGE = 8,
-  BIG_STROKE = 8,
-  SVG_HEIGHT = 2000,
-  HEATMAP_BOX_HEIGHT = 100,
-  HEATMAP_BOX_WIDTH = 100,
-  INCOME_THRESHHOLD = 80000,
-  HEATMAP_BUCKET_1_MAX = 10,
-  HEATMAP_BUCKET_2_MAX = 20,
-  SECOND_HEATMAP_OFFSET = 1400,
-  OTHER_THRESHOLD = 28, // You can play with this pixel high threshold; the lower the #, the lower the max-height for a subcategory's text (i.e., you'll probably see Other split into more categories, but the text may be squished vertically)
-  TOP_COUNT = 5; // # of top categories to display
+  };
 
 function capitalize(word) {
   return word.charAt(0).toUpperCase() + word.slice(1);
@@ -254,39 +276,25 @@ function wrap(text, width) {
   });
 }
 
+d3.csv(USE_GITHUB_DATA ? GITHUB_DEMOGRAPHICS : LOCAL_DEMOGRAPHICS).then(function(data) {
+    for (var person of data) {
+    if (checkID(person.Id)) {
+      demoIds.push(parseInt(person.Id));
+    }
+  }
+    console.log('demoIds: ', demoIds);
+  });
 
-
-// Currently uses the data file stored on my personal GitHub
-// NOTE: you may replace the below GitHub posted .csv file with your own, as long as it is either on GitHub or in the same folder as the cocobot_diagram.js file
-d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_data_old.csv').then(function(data) {
-// d3.csv('/all_data_old.csv').then(function(data) {
+d3.csv(USE_GITHUB_DATA ? GITHUB_EMOTIONS : LOCAL_EMOTIONS).then(function(data) {
   var topY = INIT_Y,
-    topYByPerson = INIT_Y;
-    // labels; // for the filters at top
-
-  // labels = d3.select('#diagram_inputs')
-  //   .selectAll()
-  //   .data(['Asian', 'Count by Person', 'Income Under $80K', 'Care Receiver Under 30'])
-  //   .enter()
-  //   .append('label');
-
-  // labels.append('input')
-  //   .attr('type', 'radio')
-  //   .attr('class', function(d) { return 'checkbox ' + d.toLowerCase().split(' ').join('_'); })
-  //   .property('checked', function(d) { return d === 'Count by Person'; })
-  //   .attr('name', function(d) { return d; })
-  //   .attr('value', function(d) { return d.toLowerCase(); })
-  //   .on('change', change)
+    topYByPerson = INIT_Y,
+    nons = []; // people without demographic data
 
   d3.selectAll('#diagram_inputs input')
   .on('mousedown', handleInputChange)
   
   d3.selectAll('#diagram_inputs .filter')
   .on('click', handleClick)
-  // d3.selectAll('#diagram_inputs ')
-  
-  // labels.append('span')
-  //   .text(function(d) { return d; })
 
   // Parse the raw data
   // Sift out Ambiguous, group items by emotion
@@ -340,32 +348,38 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
             };
           }
         }
+        // ONLY ADD ID IF NOT AMBIGUOUS AND HAS DEMOGRAPHIC DATA
         if (thisEmotion != 'ambiguous') {
-          addID(thisRow.ID_NO, thisEmotion, category);
-          addCategoryID(emotionList[thisEmotion][category].id_list, thisRow.ID_NO);
+          if (demoIds.includes(parseInt(thisRow.ID_NO))) {
+            addID(thisRow.ID_NO, thisEmotion, category);
+            addCategoryID(emotionList[thisEmotion][category].id_list, thisRow.ID_NO);
 
-          // Tally subcategory
-          if (!!subCategory) {
-            var subList = emotionList[thisEmotion][category].subCategories;
-    
-            if (!!subList[subCategory]) {
-              subList[subCategory].count++;
-            } else {
-              subList[subCategory] = {
-                category: category,
-                subCategory: subCategory.toLowerCase(),
-                count: 1,
-                id_list: [],
-                y: 0,
-                yByPerson: 0
-              };
+            // Tally subcategory
+            if (!!subCategory) {
+              var subList = emotionList[thisEmotion][category].subCategories;
+      
+              if (!!subList[subCategory]) {
+                subList[subCategory].count++;
+              } else {
+                subList[subCategory] = {
+                  category: category,
+                  subCategory: subCategory.toLowerCase(),
+                  count: 1,
+                  id_list: [],
+                  y: 0,
+                  yByPerson: 0
+                };
+              }
+              addCategoryID(subList[subCategory].id_list, thisRow.ID_NO);
             }
-            addCategoryID(subList[subCategory].id_list, thisRow.ID_NO);
+          } else {
+            console.log(thisRow.ID_NO + ' does not have demographic data');
+            !nons.includes(thisRow.ID_NO) && nons.push(thisRow.ID_NO);
           }
         }
       }
     } else {
-      console.log('Not an emotion: ' + thisRow.emotion);
+      // console.log('Not an emotion: ' + thisRow.emotion);
     }
   }
   
@@ -550,6 +564,9 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
   }
 
   function mapEmployment(rawEmployment) {
+    if (FULL_OTHER_TIME) {
+      return WORK_MAPPER[rawEmployment] === 'fullTime' ? 'fullTime' : 'otherTime';
+    }
     return WORK_MAPPER[rawEmployment] || 'otherTime';
   }
 
@@ -560,10 +577,10 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
       'otherTime': 0,
       'asian': 0,
       'income_under_80': 0,
-      'receiver_under_30': 0,
+      'receiver_under_21': 0,
       'non_asian': 0,
       'non_income_under_80': 0,
-      'non_receiver_under_30': 0,
+      'non_receiver_under_21': 0,
       'asianANDincome_under_80': 0,
       'asianANDnon_income_under_80': 0,
       'non_asianANDincome_under_80': 0,
@@ -575,10 +592,10 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
       'otherTime': 0,
       'asian': 0,
       'income_under_80': 0,
-      'receiver_under_30': 0,
+      'receiver_under_21': 0,
       'non_asian': 0,
       'non_income_under_80': 0,
-      'non_receiver_under_30': 0,
+      'non_receiver_under_21': 0,
       'asianANDincome_under_80': 0,
       'asianANDnon_income_under_80': 0,
       'non_asianANDincome_under_80': 0,
@@ -586,9 +603,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     }
   };
 
-  // NOTE: you may replace the below GitHub posted .csv file with your own, as long as it is either on GitHub or in the same folder as the cocobot_diagram.js file
-  // d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/coco-demographics.csv').then(function(data) {
-  d3.csv('/coco-demographics.csv').then(function(data) {
+  d3.csv(USE_GITHUB_DATA ? GITHUB_DEMOGRAPHICS : LOCAL_DEMOGRAPHICS).then(function(data) {
     // Demographically categorize each person
     for (var csvPerson of data) {
       if (correlation[csvPerson.Id]) {
@@ -596,7 +611,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
   
         correlationPerson.asian = asianCategory.includes(csvPerson.Ethnicity.toLowerCase().trim());
         correlationPerson.income_under_80 = under80K(csvPerson.Income);
-        correlationPerson.receiver_under_30 = csvPerson.Receiver_age < 30;
+        correlationPerson.receiver_under_21 = csvPerson.Receiver_age < 21;
         correlationPerson.employment = mapEmployment(csvPerson.Employment.toLowerCase().trim());
       }
     }
@@ -613,10 +628,10 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
               'otherTime': 0,
               'asian': 0,
               'income_under_80': 0,
-              'receiver_under_30': 0,
+              'receiver_under_21': 0,
               'non_asian': 0,
               'non_income_under_80': 0,
-              'non_receiver_under_30': 0,
+              'non_receiver_under_21': 0,
               'asianANDincome_under_80': 0,
               'asianANDnon_income_under_80': 0,
               'non_asianANDincome_under_80': 0,
@@ -626,18 +641,16 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
           for (var id of categoryRect.id_list) {
             var p = correlation[id];
             if (!['fullTime', 'partTime', 'otherTime'].includes(p.employment)) {
-              // console.log(p);
+              console.log(id);
               nons++;
-            } else {
-              // console.log(p);
             }
             categoryRect.heatmapCounts[p.employment]++;
             totalHeatmapCounts[emotion][p.employment]++;
-            for (var cat of ['asian', 'income_under_80', 'receiver_under_30']) {
+            for (var cat of ['asian', 'income_under_80', 'receiver_under_21']) {
               if (p[cat]) {
                 categoryRect.heatmapCounts[cat]++;
                 totalHeatmapCounts[emotion][cat]++;
-              } else { // tally inverses: non_asian, non_income_under_80, non_receiver_under_30
+              } else { // tally inverses: non_asian, non_income_under_80, non_receiver_under_21
                 categoryRect.heatmapCounts['non_' + cat]++;
                 totalHeatmapCounts[emotion]['non_' + cat]++;
               }
@@ -663,23 +676,24 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
           }
         }
         for (var categoryRect of sortedRects[emotion]) {
-          for (var cat of ['fullTime', 'partTime', 'otherTime', 'asian', 'income_under_80', 'receiver_under_30', 'non_asian', 'non_income_under_80', 'non_receiver_under_30', 'asianANDincome_under_80', 'asianANDnon_income_under_80', 'non_asianANDincome_under_80', 'non_asianANDnon_income_under_80']) {
+          for (var cat of ['fullTime', 'partTime', 'otherTime', 'asian', 'income_under_80', 'receiver_under_21', 'non_asian', 'non_income_under_80', 'non_receiver_under_21', 'asianANDincome_under_80', 'asianANDnon_income_under_80', 'non_asianANDincome_under_80', 'non_asianANDnon_income_under_80']) {
             categoryRect.heatmapCounts[cat + '_tooltip'] = '(' + categoryRect.heatmapCounts[cat] + '/' + totalHeatmapCounts[emotion][cat] + ')';
             categoryRect.heatmapCounts[cat] = Math.round(categoryRect.heatmapCounts[cat] * 100 / totalHeatmapCounts[emotion][cat]);
+            heatmapColLabelMapper[cat][emotion === 'negative' ? 'neg_n' : 'pos_n'] = totalHeatmapCounts[emotion][cat];
           }
         }
       }
-      // console.log('nons: ', nons);
+      console.log('nons: ', nons);
     }
   
-    var emotionLabelY = 200;
+    var emotionLabelY = 240;
   
     // Spacing for negative and positive labels for heatmaps
     for (var emotionLabel of sortedRects.negative) {
       emotionLabel.emotionLabelY = emotionLabelY;
       emotionLabelY += HEATMAP_BOX_HEIGHT;
     }
-    emotionLabelY += 50; // space between negatives and positives
+    emotionLabelY += 90; // space between negatives and positives
     for (var emotionLabel of sortedRects.positive) {
       emotionLabel.emotionLabelY = emotionLabelY;
       emotionLabelY += HEATMAP_BOX_HEIGHT;
@@ -695,7 +709,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     // Create heatmap column wrappers (<g>)
     heatmap.select('#heatmapDiagram')
       .selectAll('path')
-      .data(['emotionLabels', 'groupLabels', 'fullTimeCol', 'partTimeCol', 'otherTimeCol', 'asianCol', 'non_asianCol', 'income_under_80Col', 'non_income_under_80Col', 'receiver_under_30Col', 'non_receiver_under_30Col', 'asianANDincome_under_80Col', 'asianANDnon_income_under_80Col', 'non_asianANDincome_under_80Col', 'non_asianANDnon_income_under_80Col'])
+      .data(['emotionLabels', 'groupLabels', 'grouplabels_neg', 'grouplabels_pos', 'fullTimeCol', 'partTimeCol', 'otherTimeCol', 'asianCol', 'non_asianCol', 'income_under_80Col', 'non_income_under_80Col', 'receiver_under_21Col', 'non_receiver_under_21Col', 'asianANDincome_under_80Col', 'asianANDnon_income_under_80Col', 'non_asianANDincome_under_80Col', 'non_asianANDnon_income_under_80Col'])
       .enter()
       .append('g')
       .attr('id', function(d) {
@@ -706,7 +720,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
 
     
     // Heatmap mapper for string<--->var conversion
-    var fullTime, partTime, otherTime, asian, non_asian, income_under_80, non_income_under_80, receiver_under_30, non_receiver_under_30, asianANDincome_under_80, asianANDnon_income_under_80, non_asianANDincome_under_80, non_asianANDnon_income_under_80,
+    var fullTime, partTime, otherTime, asian, non_asian, income_under_80, non_income_under_80, receiver_under_21, non_receiver_under_21, asianANDincome_under_80, asianANDnon_income_under_80, non_asianANDincome_under_80, non_asianANDnon_income_under_80,
       heatmapColMapper = {
         fullTime: fullTime,
         partTime: partTime,
@@ -715,13 +729,15 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
         non_asian: non_asian,
         income_under_80: income_under_80,
         non_income_under_80: non_income_under_80,
-        receiver_under_30: receiver_under_30,
-        non_receiver_under_30: non_receiver_under_30,
+        receiver_under_21: receiver_under_21,
+        non_receiver_under_21: non_receiver_under_21,
         asianANDincome_under_80: asianANDincome_under_80, 
         asianANDnon_income_under_80: asianANDnon_income_under_80, 
         non_asianANDincome_under_80: non_asianANDincome_under_80, 
         non_asianANDnon_income_under_80: non_asianANDnon_income_under_80
       };
+
+    FULL_OTHER_TIME && delete heatmapColMapper['partTime'];
 
     // Create column wrappers
     for (var key of Object.keys(heatmapColMapper)) {
@@ -763,19 +779,19 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
       .data([
         {
           group: 'Employment',
-          x: 670
+          x: FULL_OTHER_TIME ? 620 : 670
         },
         {
           group: 'Ethnicity',
-          x: 940
+          x: FULL_OTHER_TIME ? 840 : 940
         },
         {
           group: 'Income',
-          x: 1160
+          x: FULL_OTHER_TIME ? 1060 : 1160
         },
         {
-          group: 'Caregiver\nAge',
-          x: 1380
+          group: 'Care Receiver\nAge',
+          x: FULL_OTHER_TIME ? 1280 : 1380
         }
       ])
       .enter()
@@ -813,38 +829,74 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
       .style('font-size', '24px')
 
     // Demographic labels above squares
+    // Negative
     var heatmapLabelX = 570,
-      singleDemographics = ['Full Time', 'Part Time', 'Other', 'Asian', 'Non-Asian', 'Less Than $80k', '$80k and Up', 'Less Than 30', '30 and Up'],
+      singleDemographics = ['Full Time', 'Part Time', 'Other', 'Asian', 'Non-Asian', 'Less Than $80k', '$80k and Up', 'Less Than 21', '21 and Up'],
       comboDemographics = ['Asian Earning <$80k', 'Asian Earning $80k+', 'Non-Asian Earning <$80k', 'Non-Asian Earning $80k+'];
 
-    heatmap.select('#groupLabels')
+    FULL_OTHER_TIME && singleDemographics.splice(singleDemographics.indexOf('Part Time'), 1) && delete heatmapColLabelMapper['partTime'];
+
+    var heatmapColLabels = heatmap.select('#groupLabels')
       .selectAll('path')
-      .data(singleDemographics.concat(comboDemographics))
+      .data(Object.keys(heatmapColLabelMapper))
       .enter()
       .append('text')
       .style('font-size', '20px')
       .attr('x', function(d) {
         var toRet = heatmapLabelX;
-        heatmapLabelX += ['Other', 'Non-Asian', '$80k and Up'].includes(d) ? 120 : 100;
-        ['30 and Up', 'Non-Asian Earning $80k+'].includes(d) && (heatmapLabelX = 570); // reset for 2nd heatmap's transform x's
+        heatmapLabelX += ['Other', 'Non-Asian', '$80k and Up'].includes(heatmapColLabelMapper[d].text) ? 120 : 100;
+        ['21 and Up', 'Non-Asian Earning $80k+'].includes(heatmapColLabelMapper[d].text) && (heatmapLabelX = 570); // reset for 2nd heatmap's transform x's
         return toRet - 20;
       })
       .attr('y', function(d) {
-        return comboDemographics.includes(d) ? SECOND_HEATMAP_OFFSET + 140 : 140;
+        return comboDemographics.includes(heatmapColLabelMapper[d].text) ? SECOND_HEATMAP_OFFSET + 160 : 160;
       })
       .style('font-weight', 600)
       .attr('fill', 'black')
-      .text(function(d) {
-        return d;
-      })
       .attr('transform', function(d) { // lean them diagonally
         var toRet = heatmapLabelX,
           y;
-        heatmapLabelX += ['Other', 'Non-Asian', '$80k and Up'].includes(d) ? 120 : 100;
-        y = comboDemographics.includes(d) ? SECOND_HEATMAP_OFFSET + 140 : 140;
-        d === '30 and Up' && (heatmapLabelX = 570);
+        heatmapLabelX += ['Other', 'Non-Asian', '$80k and Up'].includes(heatmapColLabelMapper[d].text) ? 120 : 100;
+        y = comboDemographics.includes(heatmapColLabelMapper[d].text) ? SECOND_HEATMAP_OFFSET + 160 : 160;
+        heatmapColLabelMapper[d].text === '21 and Up' && (heatmapLabelX = 570);
         return 'rotate(315, ' + (toRet - 20) + ', ' + y + ')';
       })
+
+      heatmapColLabels
+        .append('tspan')
+        .text(function(d) {
+          return heatmapColLabelMapper[d].text;
+        })
+
+      var heatmapColLabelsVarMapper = {
+        neg: heatmap.select('#grouplabels_neg'),
+        pos: heatmap.select('#grouplabels_pos')
+      };
+
+      // Display (n=...)
+      for (var emotion of ['neg', 'pos']) {
+        heatmapLabelX = 570;
+        
+        heatmapColLabelsVarMapper[emotion]
+          .selectAll('path')
+          .data(Object.keys(heatmapColLabelMapper))
+          .enter()
+          .append('text')
+          .style('text-anchor', 'middle')
+          .attr('class', 'heatmapColLabel_pos')
+          .attr('heatmapColLabel', function(d) { return d; })
+          .text(function(d) { return ' (n=' + heatmapColLabelMapper[d][emotion === 'neg' ? 'neg_n' : 'pos_n'] + ')'; })
+          .attr('font-size', 16)
+          .attr('x', function(d) {
+            var toRet = heatmapLabelX;
+            heatmapLabelX += ['Other', 'Non-Asian', '$80k and Up'].includes(heatmapColLabelMapper[d].text) ? 120 : 100;
+            heatmapColLabelMapper[d].text === '21 and Up' && (heatmapLabelX = 570); // reset for 2nd heatmap
+            return toRet;
+          })
+          .attr('y', function(d) {
+            return (emotion === 'neg' ? 180 : 770) + (['Asian Earning <$80k', 'Asian Earning $80k+', 'Non-Asian Earning <$80k', 'Non-Asian Earning $80k+'].includes(heatmapColLabelMapper[d].text) ? SECOND_HEATMAP_OFFSET : 0);
+          })
+      }
 
     // Negative/Positive vertical labels to the left
     for (var yy of [0, SECOND_HEATMAP_OFFSET]) {
@@ -888,12 +940,12 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
         .text(function(d) { return capitalize(d.category); })
         .style('text-anchor', 'end')
         .append('tspan')
-        .text(function(d) { return showCount(d.id_list.length); })
+        .text(function(d) { return ' (n=' + d.id_list.length + ')'; })
     }
 
     var tooltipToFind;
 
-    // Show the upper
+    // Show the upper left tooltip
     function tooltip(box, col, emotion, category) {
       tooltipToFind = '[tooltipDesc="' + col + '+' + emotion + '+' + category + '"]';
       heatmap.select(tooltipToFind)
@@ -902,11 +954,13 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
 
     var colorScale = d3.scaleLinear()
       .domain([0, 30])
-      .range(['blue','brown'])
+      // .range(['#2a5c8a','#f69035']) // For low blue and high orange
+      // .range(['#f69035', '#2a5c8a']) // For high blue and low orange
+      .range(['#b7dcf0', '#2a5783']) // For low white high blue
 
     // Display heatmap colored squares
     var heatmapColX = 520,
-      comboDemographics = ['asianANDincome_under_80', 'asianANDnon_income_under_80', 'non_asianANDincome_under_80', 'non_asianANDnon_income_under_80'];
+      comboDemographics = ['asianANDincome_under_80', 'asianANDnon_income_under_80', 'non_asianANDincome_under_80', 'non_asianANDnon_income_under_80'];;
 
     for (var heatmapCol of Object.keys(heatmapColMapper)) {
       heatmapColMapper[heatmapCol]
@@ -990,13 +1044,14 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
         .style('visibility', 'hidden')
 
       heatmapColX += ['otherTime', 'non_asian', 'non_income_under_80'].includes(heatmapCol) ? 120 : 100;
-      heatmapCol === 'non_receiver_under_30' && (heatmapColX = 520);
+      heatmapCol === 'non_receiver_under_21' && (heatmapColX = 520);
     }
 
   }); // END HEATMAP
 
 
   // Logging objects made
+  console.log(nons.length + ' people did not have demographic data');
   console.log('correlation', correlation);
   console.log('emotionList', emotionList);
   console.log('cols.subNegative', cols.subNegative);
@@ -1586,11 +1641,11 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
         categoryToSwitch = 'byIncome';
         getOpposite['byIncome'] = true;
         break;
-      case 'Care Receiver Under 30':
+      case 'Care Receiver Under 21':
         categoryToSwitch = 'byCareReceiverAge';
         getOpposite['byCareReceiverAge'] = false;
         break;
-      case 'Care Receiver 30+':
+      case 'Care Receiver 21+':
         categoryToSwitch = 'byCareReceiverAge';
         getOpposite['byCareReceiverAge'] = true;
         break;
@@ -1617,7 +1672,7 @@ d3.csv('https://raw.githubusercontent.com/UlyssesLin/CoCoBot_Diagram/master/all_
     var countMapper = {
         byEthnicity: 'asian',
         byIncome: 'income_under_80',
-        byCareReceiverAge: 'receiver_under_30'
+        byCareReceiverAge: 'receiver_under_21'
       },
       filtersToCheck = [];
     for (filter of Object.keys(filters)) {
